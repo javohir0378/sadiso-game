@@ -25,8 +25,12 @@ fun generateBoard(): MutableList<Tile> {
     for ((z, size) in layerSizes.withIndex()) {
         val (cols, rows) = size
         val offset = z * 2
+        val corners = setOf(0 to 0, cols - 1 to 0, 0 to rows - 1, cols - 1 to rows - 1)
         for (row in 0 until rows) {
             for (col in 0 until cols) {
+                // Trim the base layer's four corners so the board isn't a plain
+                // rectangle - matches the irregular outline of real tile sets.
+                if (z == 0 && (col to row) in corners) continue
                 positions.add(Pos(offset + col * 2, offset + row * 2, z))
             }
         }

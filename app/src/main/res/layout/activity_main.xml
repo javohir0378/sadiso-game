@@ -112,6 +112,35 @@
                     android:textSize="11sp" />
             </LinearLayout>
 
+            <View
+                android:layout_width="36dp"
+                android:layout_height="1dp" />
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:gravity="center">
+
+                <ImageButton
+                    android:id="@+id/undoButton"
+                    android:layout_width="60dp"
+                    android:layout_height="60dp"
+                    android:background="@drawable/circle_button_bg"
+                    android:src="@drawable/ic_undo"
+                    android:contentDescription="@string/undo"
+                    android:scaleType="centerInside"
+                    android:padding="16dp" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="@string/undo"
+                    android:textColor="@color/label_muted"
+                    android:textSize="11sp" />
+            </LinearLayout>
+
         </LinearLayout>
 
     </LinearLayout>

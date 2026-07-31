@@ -38,6 +38,7 @@ class MainActivity : AppCompatActivity(), MahjongBoardView.Listener {
 
         findViewById<ImageButton>(R.id.newGameButton).setOnClickListener { board.newGame() }
         findViewById<ImageButton>(R.id.shuffleButton).setOnClickListener { board.shuffleRemaining() }
+        findViewById<ImageButton>(R.id.undoButton).setOnClickListener { board.undo() }
 
         onMovesChanged(0)
     }

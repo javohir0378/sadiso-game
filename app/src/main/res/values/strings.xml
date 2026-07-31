@@ -3,4 +3,5 @@
     <string name="app_name">Vita Mahjong</string>
     <string name="new_game">Yangi o\'yin</string>
     <string name="shuffle">Aralashtirish</string>
+    <string name="undo">Orqaga</string>
 </resources>

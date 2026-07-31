@@ -10,6 +10,7 @@ import android.graphics.Shader
 import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
+import kotlin.math.sin
 
 class MahjongBoardView @JvmOverloads constructor(
     context: Context,
@@ -20,6 +21,8 @@ class MahjongBoardView @JvmOverloads constructor(
         private const val TRAY_SIZE = 4
         private const val FLY_DURATION_MS = 260L
         private const val CLEAR_DURATION_MS = 220L
+        private const val SHAKE_DURATION_MS = 320L
+        private const val HISTORY_LIMIT = 20
     }
 
     interface Listener {
@@ -42,12 +45,18 @@ class MahjongBoardView @JvmOverloads constructor(
         val startTime: Long
     )
 
+    private data class RejectShake(val tile: Tile, val startTime: Long)
+
+    private data class Snapshot(val tiles: List<Tile>, val tray: List<Tile?>, val moves: Int)
+
     var listener: Listener? = null
 
     private var tiles: MutableList<Tile> = generateBoard()
     private val traySlots = arrayOfNulls<Tile>(TRAY_SIZE)
     private var flying: FlyingTile? = null
     private val clearingSlots = mutableListOf<ClearingSlot>()
+    private var rejectShake: RejectShake? = null
+    private val history = ArrayDeque<Snapshot>()
     private var moves = 0
     private var wonFired = false
     private var lostFired = false
@@ -66,18 +75,23 @@ class MahjongBoardView @JvmOverloads constructor(
     private val shadowPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
-        color = Color.parseColor("#5D4037")
+        color = Color.parseColor("#8D6E4A")
     }
     private val selectedBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         color = Color.parseColor("#FFC107")
     }
     private val facePaint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val dimPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.argb(120, 10, 20, 15)
+    private val backPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val backBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        color = Color.parseColor("#7A4A1E")
+    }
+    private val medallionPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        color = Color.parseColor("#E8B84B")
     }
     private val symbolPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#B71C1C")
         textAlign = Paint.Align.CENTER
     }
     private val traySlotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -94,6 +108,8 @@ class MahjongBoardView @JvmOverloads constructor(
         for (i in 0 until TRAY_SIZE) traySlots[i] = null
         clearingSlots.clear()
         flying = null
+        rejectShake = null
+        history.clear()
         moves = 0
         wonFired = false
         lostFired = false
@@ -105,6 +121,18 @@ class MahjongBoardView @JvmOverloads constructor(
     fun shuffleRemaining() {
         val symbols = tiles.map { it.symbol }.shuffled()
         tiles = tiles.mapIndexed { i, t -> t.copy(symbol = symbols[i]) }.toMutableList()
+        invalidate()
+    }
+
+    fun undo() {
+        if (flying != null || clearingSlots.isNotEmpty()) return
+        val snap = history.removeLastOrNull() ?: return
+        tiles = snap.tiles.toMutableList()
+        for (i in 0 until TRAY_SIZE) traySlots[i] = snap.tray[i]
+        moves = snap.moves
+        wonFired = false
+        lostFired = false
+        listener?.onMovesChanged(moves)
         invalidate()
     }
 
@@ -120,9 +148,9 @@ class MahjongBoardView @JvmOverloads constructor(
             cachedMaxYFine = my
         }
         val marginFine = 2f
-        val trayFineH = 2.6f
+        val trayFineH = 2.8f
         val trayFineGap = 0.7f
-        val totalFineW = maxOf(cachedMaxXFine + marginFine, TRAY_SIZE * 2.3f + marginFine)
+        val totalFineW = maxOf(cachedMaxXFine + marginFine, TRAY_SIZE * 2.5f + marginFine)
         val totalFineH = cachedMaxYFine + marginFine + trayFineH + trayFineGap
         unit = minOf(w / totalFineW, h / totalFineH)
         viewW = w.toFloat()
@@ -131,16 +159,16 @@ class MahjongBoardView @JvmOverloads constructor(
         val topMargin = (h - contentH) / 2f
         trayOffsetY = topMargin
         boardOffsetY = topMargin + (trayFineH + trayFineGap) * unit
-        traySlotSize = unit * 2.1f
-        traySlotGap = unit * 0.35f
+        traySlotSize = unit * 2.3f
+        traySlotGap = unit * 0.3f
     }
 
     private fun rectFor(t: Tile): RectF {
         val shift = t.z * layerShiftPx
         val left = boardOffsetX + t.x * unit - shift
         val top = boardOffsetY + t.y * unit - shift
-        val w = unit * 1.9f
-        val hgt = unit * 1.96f
+        val w = unit * 1.94f
+        val hgt = unit * 2f
         return RectF(left, top, left + w, top + hgt)
     }
 
@@ -161,7 +189,19 @@ class MahjongBoardView @JvmOverloads constructor(
         return RectF(cx - hw, cy - hh, cx + hw, cy + hh)
     }
 
-    private fun drawTile(canvas: Canvas, rect: RectF, symbol: String, dim: Boolean, highlight: Boolean, alpha: Int) {
+    private fun symbolColor(symbol: String): Int {
+        val cp = symbol.codePointAt(0)
+        return when (cp) {
+            in 0x1F007..0x1F00F -> Color.parseColor("#1A2340")
+            in 0x1F010..0x1F018 -> Color.parseColor("#1B7A3D")
+            in 0x1F019..0x1F021 -> Color.parseColor("#1565C0")
+            0x1F004 -> Color.parseColor("#C62828")
+            0x1F005 -> Color.parseColor("#2E7D32")
+            else -> Color.parseColor("#C62828")
+        }
+    }
+
+    private fun drawTile(canvas: Canvas, rect: RectF, symbol: String, highlight: Boolean, alpha: Int) {
         val radius = unit * 0.28f
 
         val shadowRect = RectF(rect)
@@ -171,28 +211,51 @@ class MahjongBoardView @JvmOverloads constructor(
 
         facePaint.shader = LinearGradient(
             rect.left, rect.top, rect.left, rect.bottom,
-            Color.parseColor("#FFFDF5"), Color.parseColor("#E8DCC0"),
+            Color.parseColor("#FFFEF9"), Color.parseColor("#F3E7C9"),
             Shader.TileMode.CLAMP
         )
         facePaint.alpha = alpha
         canvas.drawRoundRect(rect, radius, radius, facePaint)
 
-        borderPaint.strokeWidth = unit * 0.09f
+        borderPaint.strokeWidth = unit * 0.07f
         borderPaint.alpha = alpha
         canvas.drawRoundRect(rect, radius, radius, borderPaint)
 
-        symbolPaint.textSize = rect.height() * 0.6f
+        symbolPaint.color = symbolColor(symbol)
+        symbolPaint.textSize = rect.height() * 0.62f
         symbolPaint.alpha = alpha
         val textY = rect.centerY() - (symbolPaint.descent() + symbolPaint.ascent()) / 2f
         canvas.drawText(symbol, rect.centerX(), textY, symbolPaint)
 
-        if (dim) {
-            canvas.drawRoundRect(rect, radius, radius, dimPaint)
-        }
         if (highlight) {
             selectedBorderPaint.strokeWidth = unit * 0.16f
             canvas.drawRoundRect(rect, radius, radius, selectedBorderPaint)
         }
+    }
+
+    private fun drawTileBack(canvas: Canvas, rect: RectF) {
+        val radius = unit * 0.28f
+
+        val shadowRect = RectF(rect)
+        shadowRect.offset(unit * 0.08f, unit * 0.1f)
+        shadowPaint.color = Color.argb(90, 0, 0, 0)
+        canvas.drawRoundRect(shadowRect, radius, radius, shadowPaint)
+
+        backPaint.shader = LinearGradient(
+            rect.left, rect.top, rect.left, rect.bottom,
+            Color.parseColor("#F6C244"), Color.parseColor("#D89A1E"),
+            Shader.TileMode.CLAMP
+        )
+        canvas.drawRoundRect(rect, radius, radius, backPaint)
+
+        backBorderPaint.strokeWidth = unit * 0.07f
+        canvas.drawRoundRect(rect, radius, radius, backBorderPaint)
+
+        medallionPaint.strokeWidth = unit * 0.05f
+        val cx = rect.centerX()
+        val cy = rect.centerY()
+        canvas.drawCircle(cx, cy, rect.width() * 0.28f, medallionPaint)
+        canvas.drawCircle(cx, cy, rect.width() * 0.15f, medallionPaint)
     }
 
     private fun drawTray(canvas: Canvas) {
@@ -212,25 +275,45 @@ class MahjongBoardView @JvmOverloads constructor(
         drawTray(canvas)
 
         val sorted = tiles.sortedBy { it.z }
+        var shakeActive = false
+        val shake = rejectShake
+        val now = System.currentTimeMillis()
+
         for (t in sorted) {
-            drawTile(canvas, rectFor(t), t.symbol, dim = !isSelectable(t, tiles), highlight = false, alpha = 255)
+            var rect = rectFor(t)
+            if (shake != null && shake.tile == t) {
+                val raw = ((now - shake.startTime).toFloat() / SHAKE_DURATION_MS).coerceIn(0f, 1f)
+                if (raw < 1f) {
+                    val amp = unit * 0.14f * (1f - raw)
+                    val dx = sin(raw * Math.PI.toFloat() * 6f) * amp
+                    rect = RectF(rect.left + dx, rect.top, rect.right + dx, rect.bottom)
+                    shakeActive = true
+                } else {
+                    rejectShake = null
+                }
+            }
+            if (isCovered(t, tiles)) {
+                drawTileBack(canvas, rect)
+            } else {
+                drawTile(canvas, rect, t.symbol, highlight = false, alpha = 255)
+            }
         }
+        if (shakeActive) postInvalidateOnAnimation()
 
         traySlots.forEachIndexed { i, t ->
             if (t != null && clearingSlots.none { it.index == i }) {
-                drawTile(canvas, traySlotRect(i), t.symbol, dim = false, highlight = false, alpha = 255)
+                drawTile(canvas, traySlotRect(i), t.symbol, highlight = false, alpha = 255)
             }
         }
 
         if (clearingSlots.isNotEmpty()) {
-            val now = System.currentTimeMillis()
             var anyDone = false
             for (c in clearingSlots) {
                 val raw = ((now - c.startTime).toFloat() / CLEAR_DURATION_MS).coerceIn(0f, 1f)
                 val scale = 1f - raw
                 val alpha = ((1f - raw) * 255).toInt()
                 val rect = shrinkRect(traySlotRect(c.index), scale)
-                drawTile(canvas, rect, c.tile.symbol, dim = false, highlight = false, alpha = alpha)
+                drawTile(canvas, rect, c.tile.symbol, highlight = false, alpha = alpha)
                 if (raw >= 1f) anyDone = true
             }
             if (anyDone) {
@@ -242,7 +325,6 @@ class MahjongBoardView @JvmOverloads constructor(
 
         val fly = flying
         if (fly != null) {
-            val now = System.currentTimeMillis()
             val raw = ((now - fly.startTime).toFloat() / FLY_DURATION_MS).coerceIn(0f, 1f)
             val t = 1f - (1f - raw) * (1f - raw)
             val rect = RectF(
@@ -251,7 +333,7 @@ class MahjongBoardView @JvmOverloads constructor(
                 lerp(fly.from.right, fly.to.right, t),
                 lerp(fly.from.bottom, fly.to.bottom, t)
             )
-            drawTile(canvas, rect, fly.tile.symbol, dim = false, highlight = true, alpha = 255)
+            drawTile(canvas, rect, fly.tile.symbol, highlight = true, alpha = 255)
             if (raw >= 1f) {
                 finishFlight(fly)
             } else {
@@ -303,11 +385,16 @@ class MahjongBoardView @JvmOverloads constructor(
             .maxByOrNull { it.z } ?: return true
 
         if (!isSelectable(hit, tiles)) {
+            rejectShake = RejectShake(hit, System.currentTimeMillis())
+            invalidate()
             return true
         }
 
         val emptyIndex = traySlots.indexOfFirst { it == null }
         if (emptyIndex == -1) return true
+
+        history.addLast(Snapshot(tiles.toList(), traySlots.toList(), moves))
+        if (history.size > HISTORY_LIMIT) history.removeFirst()
 
         tiles.remove(hit)
         flying = FlyingTile(hit, rectFor(hit), traySlotRect(emptyIndex), emptyIndex, System.currentTimeMillis())
