@@ -4,7 +4,6 @@ import android.app.AlertDialog
 import android.os.Bundle
 import android.widget.Button
 import android.widget.TextView
-import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 
 class MainActivity : AppCompatActivity(), MahjongBoardView.Listener {
@@ -39,7 +38,12 @@ class MainActivity : AppCompatActivity(), MahjongBoardView.Listener {
             .show()
     }
 
-    override fun onNoMovesLeft() {
-        Toast.makeText(this, "Yurish qolmadi — 'Aralashtirish' tugmasini bosing", Toast.LENGTH_LONG).show()
+    override fun onLose() {
+        AlertDialog.Builder(this)
+            .setTitle("O'yin tugadi")
+            .setMessage("Yuqoridagi joylar to'lib qoldi. Qayta urinib ko'ring!")
+            .setPositiveButton("Qayta boshlash") { _, _ -> board.newGame() }
+            .setCancelable(false)
+            .show()
     }
 }
