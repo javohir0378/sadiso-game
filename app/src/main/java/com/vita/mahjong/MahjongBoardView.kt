@@ -26,12 +26,13 @@ class MahjongBoardView @JvmOverloads constructor(
         private const val GROW_DURATION_MS = 340L
         private const val SHAKE_DURATION_MS = 420L
         private const val SHUFFLE_DURATION_MS = 950L
-        private const val CONVERGE_MS = 280L
+        private const val PULL_MS = 190L
+        private const val CONVERGE_MS = 230L
         private const val POP_MS = 190L
-        private const val BURST_MS = 700L
+        private const val BURST_MS = 750L
         private const val COMBO_WINDOW_MS = 2200L
         private const val COMBO_POPUP_MS = 1150L
-        private const val PARTICLES_PER_TILE = 11
+        private const val SHARD_GRID = 3
         private const val HISTORY_LIMIT = 20
     }
 
@@ -74,13 +75,15 @@ class MahjongBoardView @JvmOverloads constructor(
         val movesBefore: Int
     )
 
-    private data class Particle(
-        val startX: Float,
-        val startY: Float,
+    private data class Shard(
+        val relLeft: Float,
+        val relTop: Float,
+        val relRight: Float,
+        val relBottom: Float,
         val vx: Float,
         val vy: Float,
-        val color: Int,
-        val size: Float
+        val rotSpeed: Float,
+        val tint: Int
     )
 
     private data class MatchBurst(
@@ -89,7 +92,12 @@ class MahjongBoardView @JvmOverloads constructor(
         val slotA: Int,
         val slotB: Int,
         val startTime: Long,
-        val particles: List<Particle>
+        val fromA: RectF,
+        val fromB: RectF,
+        val windupA: PointF,
+        val windupB: PointF,
+        val impact: PointF,
+        val shards: List<Shard>
     )
 
     private data class ComboPopup(val text: String, val startTime: Long, val cx: Float, val cy: Float)
@@ -161,7 +169,10 @@ class MahjongBoardView @JvmOverloads constructor(
         style = Paint.Style.STROKE
         color = Color.parseColor("#FFE082")
     }
-    private val particlePaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val shardPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val shardBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+    }
     private val comboOutlinePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         color = Color.parseColor("#3E2200")
@@ -397,22 +408,69 @@ class MahjongBoardView @JvmOverloads constructor(
         }
     }
 
-    private fun buildParticles(cx: Float, cy: Float, colorA: Int, colorB: Int): List<Particle> {
-        val list = mutableListOf<Particle>()
-        repeat(PARTICLES_PER_TILE) {
-            val angle = Random.nextFloat() * (Math.PI.toFloat() * 2f)
-            val speed = unit * (1.1f + Random.nextFloat() * 1.3f)
-            list.add(
-                Particle(
-                    cx, cy,
-                    cos(angle) * speed,
-                    sin(angle) * speed - unit * 0.6f,
-                    if (it % 2 == 0) colorA else colorB,
-                    unit * (0.09f + Random.nextFloat() * 0.07f)
+    private fun buildShards(colorA: Int, colorB: Int): List<Shard> {
+        val list = mutableListOf<Shard>()
+        var i = 0
+        for (row in 0 until SHARD_GRID) {
+            for (col in 0 until SHARD_GRID) {
+                val relLeft = col / SHARD_GRID.toFloat()
+                val relTop = row / SHARD_GRID.toFloat()
+                val relRight = (col + 1) / SHARD_GRID.toFloat()
+                val relBottom = (row + 1) / SHARD_GRID.toFloat()
+                // Direction radiating out from the tile's own center, so pieces
+                // fly outward like they've physically broken apart.
+                val dirX = (col + 0.5f) / SHARD_GRID - 0.5f
+                val dirY = (row + 0.5f) / SHARD_GRID - 0.5f
+                val jitterAngle = Random.nextFloat() * 0.6f - 0.3f
+                val cosJ = cos(jitterAngle)
+                val sinJ = sin(jitterAngle)
+                val rx = dirX * cosJ - dirY * sinJ
+                val ry = dirX * sinJ + dirY * cosJ
+                val speed = unit * (2.6f + Random.nextFloat() * 1.8f)
+                list.add(
+                    Shard(
+                        relLeft, relTop, relRight, relBottom,
+                        rx * speed, ry * speed - unit * 0.5f,
+                        (Random.nextFloat() * 2f - 1f) * 2.2f,
+                        if (i % 2 == 0) colorA else colorB
+                    )
                 )
-            )
+                i++
+            }
         }
         return list
+    }
+
+    private fun drawShard(canvas: Canvas, baseRect: RectF, shard: Shard, raw: Float, alpha: Int) {
+        val shardRect = RectF(
+            baseRect.left + shard.relLeft * baseRect.width(),
+            baseRect.top + shard.relTop * baseRect.height(),
+            baseRect.left + shard.relRight * baseRect.width(),
+            baseRect.top + shard.relBottom * baseRect.height()
+        )
+        val dx = shard.vx * raw
+        val dy = shard.vy * raw + 0.5f * unit * 2.6f * raw * raw
+        val cx = shardRect.centerX()
+        val cy = shardRect.centerY()
+
+        canvas.save()
+        canvas.translate(dx, dy)
+        canvas.rotate(shard.rotSpeed * raw * 360f, cx, cy)
+
+        shardPaint.shader = LinearGradient(
+            shardRect.left, shardRect.top, shardRect.left, shardRect.bottom,
+            Color.parseColor("#FFFEF9"), Color.parseColor("#F3E7C9"),
+            Shader.TileMode.CLAMP
+        )
+        shardPaint.alpha = alpha
+        canvas.drawRoundRect(shardRect, unit * 0.06f, unit * 0.06f, shardPaint)
+
+        shardBorderPaint.color = shard.tint
+        shardBorderPaint.strokeWidth = unit * 0.035f
+        shardBorderPaint.alpha = alpha
+        canvas.drawRoundRect(shardRect, unit * 0.06f, unit * 0.06f, shardBorderPaint)
+
+        canvas.restore()
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -486,43 +544,48 @@ class MahjongBoardView @JvmOverloads constructor(
         val mb = matchBurst
         if (mb != null) {
             val elapsed = now - mb.startTime
-            val rectA = traySlotRect(mb.slotA)
-            val rectB = traySlotRect(mb.slotB)
-            val midX = (rectA.centerX() + rectB.centerX()) / 2f
-            val midY = (rectA.centerY() + rectB.centerY()) / 2f
+            val impact = mb.impact
 
             when {
-                elapsed < CONVERGE_MS -> {
-                    val raw = easeInOutCubic((elapsed.toFloat() / CONVERGE_MS).coerceIn(0f, 1f))
-                    val scale = lerp(1f, 1.35f, raw)
-                    val cax = lerp(rectA.centerX(), midX, raw * 0.42f)
-                    val cay = lerp(rectA.centerY(), midY, raw * 0.42f)
-                    val cbx = lerp(rectB.centerX(), midX, raw * 0.42f)
-                    val cby = lerp(rectB.centerY(), midY, raw * 0.42f)
-                    drawTile(canvas, rectAt(cax, cay, traySlotSize * scale), mb.tileA.symbol, highlight = true, alpha = 255)
-                    drawTile(canvas, rectAt(cbx, cby, traySlotSize * scale), mb.tileB.symbol, highlight = true, alpha = 255)
+                elapsed < PULL_MS -> {
+                    val raw = easeOutCubic((elapsed.toFloat() / PULL_MS).coerceIn(0f, 1f))
+                    val scale = lerp(1f, 1.12f, raw)
+                    val ax = lerp(mb.fromA.centerX(), mb.windupA.x, raw)
+                    val ay = lerp(mb.fromA.centerY(), mb.windupA.y, raw)
+                    val bx = lerp(mb.fromB.centerX(), mb.windupB.x, raw)
+                    val by = lerp(mb.fromB.centerY(), mb.windupB.y, raw)
+                    drawTile(canvas, rectAt(ax, ay, traySlotSize * scale), mb.tileA.symbol, highlight = true, alpha = 255)
+                    drawTile(canvas, rectAt(bx, by, traySlotSize * scale), mb.tileB.symbol, highlight = true, alpha = 255)
                 }
-                elapsed < CONVERGE_MS + POP_MS -> {
-                    val raw = (elapsed - CONVERGE_MS).toFloat() / POP_MS
+                elapsed < PULL_MS + CONVERGE_MS -> {
+                    val t = ((elapsed - PULL_MS).toFloat() / CONVERGE_MS).coerceIn(0f, 1f)
+                    val raw = t * t * t
+                    val scale = lerp(1.12f, 1.5f, raw)
+                    val ax = lerp(mb.windupA.x, impact.x, raw)
+                    val ay = lerp(mb.windupA.y, impact.y, raw)
+                    val bx = lerp(mb.windupB.x, impact.x, raw)
+                    val by = lerp(mb.windupB.y, impact.y, raw)
+                    drawTile(canvas, rectAt(ax, ay, traySlotSize * scale), mb.tileA.symbol, highlight = true, alpha = 255)
+                    drawTile(canvas, rectAt(bx, by, traySlotSize * scale), mb.tileB.symbol, highlight = true, alpha = 255)
+                }
+                elapsed < PULL_MS + CONVERGE_MS + POP_MS -> {
+                    val raw = (elapsed - PULL_MS - CONVERGE_MS).toFloat() / POP_MS
                     val eased = easeOutCubic(raw)
-                    val glowRadius = lerp(traySlotSize * 0.3f, traySlotSize * 1.15f, eased)
+                    val glowRadius = lerp(traySlotSize * 0.3f, traySlotSize * 1.2f, eased)
                     glowPaint.alpha = ((1f - raw) * 255).toInt()
-                    canvas.drawCircle(midX, midY, glowRadius, glowPaint)
+                    canvas.drawCircle(impact.x, impact.y, glowRadius, glowPaint)
 
-                    val ringRadius = lerp(traySlotSize * 0.35f, traySlotSize * 1.5f, eased)
+                    val ringRadius = lerp(traySlotSize * 0.35f, traySlotSize * 1.6f, eased)
                     ringPaint.strokeWidth = unit * 0.09f * (1f - raw)
                     ringPaint.alpha = ((1f - raw) * 220).toInt()
-                    canvas.drawCircle(midX, midY, ringRadius, ringPaint)
+                    canvas.drawCircle(impact.x, impact.y, ringRadius, ringPaint)
                 }
-                elapsed < CONVERGE_MS + POP_MS + BURST_MS -> {
-                    val raw = (elapsed - CONVERGE_MS - POP_MS).toFloat() / BURST_MS
-                    for (p in mb.particles) {
-                        val px = p.startX + p.vx * raw
-                        val py = p.startY + p.vy * raw + 0.5f * unit * 2.4f * raw * raw
-                        val alpha = ((1f - raw) * 255).toInt().coerceIn(0, 255)
-                        particlePaint.color = p.color
-                        particlePaint.alpha = alpha
-                        canvas.drawCircle(px, py, p.size * (1f - raw * 0.4f), particlePaint)
+                elapsed < PULL_MS + CONVERGE_MS + POP_MS + BURST_MS -> {
+                    val raw = (elapsed - PULL_MS - CONVERGE_MS - POP_MS).toFloat() / BURST_MS
+                    val alpha = ((1f - raw) * 255).toInt().coerceIn(0, 255)
+                    val baseRect = rectAt(impact.x, impact.y, traySlotSize * 1.5f)
+                    for (s in mb.shards) {
+                        drawShard(canvas, baseRect, s, raw, alpha)
                     }
                 }
                 else -> {
@@ -602,8 +665,21 @@ class MahjongBoardView @JvmOverloads constructor(
             val rectB = traySlotRect(pairIndex)
             val midX = (rectA.centerX() + rectB.centerX()) / 2f
             val midY = (rectA.centerY() + rectB.centerY()) / 2f
-            val particles = buildParticles(midX, midY, symbolColor(fly.tile.symbol), symbolColor(pairTile.symbol))
-            matchBurst = MatchBurst(fly.tile, pairTile, fly.slotIndex, pairIndex, now, particles)
+            // Pull both tiles out to a fixed separation before they slam
+            // together, regardless of how close their original slots were -
+            // otherwise adjacent slots barely move and the tiles just merge.
+            val leftIsA = rectA.centerX() <= rectB.centerX()
+            val windupDist = traySlotSize * 0.85f
+            val windupA = if (leftIsA) PointF(midX - windupDist, midY) else PointF(midX + windupDist, midY)
+            val windupB = if (leftIsA) PointF(midX + windupDist, midY) else PointF(midX - windupDist, midY)
+            val shards = buildShards(symbolColor(fly.tile.symbol), symbolColor(pairTile.symbol))
+            matchBurst = MatchBurst(
+                fly.tile, pairTile, fly.slotIndex, pairIndex, now,
+                fromA = RectF(rectA), fromB = RectF(rectB),
+                windupA = windupA, windupB = windupB,
+                impact = PointF(midX, midY),
+                shards = shards
+            )
 
             traySlots[fly.slotIndex] = null
             traySlots[pairIndex] = null
