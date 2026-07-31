@@ -5,12 +5,14 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.LinearGradient
 import android.graphics.Paint
+import android.graphics.PointF
 import android.graphics.RectF
 import android.graphics.Shader
 import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
 import kotlin.math.sin
+import kotlin.random.Random
 
 class MahjongBoardView @JvmOverloads constructor(
     context: Context,
@@ -21,7 +23,9 @@ class MahjongBoardView @JvmOverloads constructor(
         private const val TRAY_SIZE = 4
         private const val FLY_DURATION_MS = 260L
         private const val CLEAR_DURATION_MS = 220L
+        private const val GROW_DURATION_MS = 220L
         private const val SHAKE_DURATION_MS = 320L
+        private const val SHUFFLE_DURATION_MS = 550L
         private const val HISTORY_LIMIT = 20
     }
 
@@ -39,6 +43,13 @@ class MahjongBoardView @JvmOverloads constructor(
         val startTime: Long
     )
 
+    private data class UndoFlight(
+        val tile: Tile,
+        val from: RectF,
+        val to: RectF,
+        val startTime: Long
+    )
+
     private data class ClearingSlot(
         val tile: Tile,
         val index: Int,
@@ -47,16 +58,27 @@ class MahjongBoardView @JvmOverloads constructor(
 
     private data class RejectShake(val tile: Tile, val startTime: Long)
 
-    private data class Snapshot(val tiles: List<Tile>, val tray: List<Tile?>, val moves: Int)
+    private data class ShuffleAnim(val tile: Tile, val offset: PointF, val startTime: Long)
+
+    private data class PickRecord(
+        val tile: Tile,
+        val slotIndex: Int,
+        val pairTile: Tile?,
+        val pairSlot: Int,
+        val movesBefore: Int
+    )
 
     var listener: Listener? = null
 
     private var tiles: MutableList<Tile> = generateBoard()
     private val traySlots = arrayOfNulls<Tile>(TRAY_SIZE)
     private var flying: FlyingTile? = null
+    private var undoFlight: UndoFlight? = null
     private val clearingSlots = mutableListOf<ClearingSlot>()
+    private val growingSlots = mutableListOf<ClearingSlot>()
     private var rejectShake: RejectShake? = null
-    private val history = ArrayDeque<Snapshot>()
+    private var shuffleAnims: List<ShuffleAnim> = emptyList()
+    private val history = ArrayDeque<PickRecord>()
     private var moves = 0
     private var wonFired = false
     private var lostFired = false
@@ -103,12 +125,18 @@ class MahjongBoardView @JvmOverloads constructor(
         color = Color.parseColor("#FFC107")
     }
 
+    private fun isAnimating() =
+        flying != null || undoFlight != null || shuffleAnims.isNotEmpty()
+
     fun newGame() {
         tiles = generateBoard()
         for (i in 0 until TRAY_SIZE) traySlots[i] = null
         clearingSlots.clear()
+        growingSlots.clear()
         flying = null
+        undoFlight = null
         rejectShake = null
+        shuffleAnims = emptyList()
         history.clear()
         moves = 0
         wonFired = false
@@ -119,20 +147,42 @@ class MahjongBoardView @JvmOverloads constructor(
     }
 
     fun shuffleRemaining() {
+        if (isAnimating()) return
         val symbols = tiles.map { it.symbol }.shuffled()
         tiles = tiles.mapIndexed { i, t -> t.copy(symbol = symbols[i]) }.toMutableList()
+        val now = System.currentTimeMillis()
+        shuffleAnims = tiles.map {
+            ShuffleAnim(
+                it,
+                PointF(Random.nextFloat() * 2f - 1f, Random.nextFloat() * 2f - 1f),
+                now
+            )
+        }
         invalidate()
     }
 
     fun undo() {
-        if (flying != null || clearingSlots.isNotEmpty()) return
-        val snap = history.removeLastOrNull() ?: return
-        tiles = snap.tiles.toMutableList()
-        for (i in 0 until TRAY_SIZE) traySlots[i] = snap.tray[i]
-        moves = snap.moves
+        if (isAnimating() || clearingSlots.isNotEmpty()) return
+        val rec = history.removeLastOrNull() ?: return
+
+        moves = rec.movesBefore
+        listener?.onMovesChanged(moves)
         wonFired = false
         lostFired = false
-        listener?.onMovesChanged(moves)
+
+        if (rec.pairTile != null) {
+            val now = System.currentTimeMillis()
+            traySlots[rec.pairSlot] = rec.pairTile
+            growingSlots.add(ClearingSlot(rec.pairTile, rec.pairSlot, now))
+        }
+        traySlots[rec.slotIndex] = null
+
+        undoFlight = UndoFlight(
+            rec.tile,
+            traySlotRect(rec.slotIndex),
+            rectFor(rec.tile),
+            System.currentTimeMillis()
+        )
         invalidate()
     }
 
@@ -147,10 +197,10 @@ class MahjongBoardView @JvmOverloads constructor(
             cachedMaxXFine = mx
             cachedMaxYFine = my
         }
-        val marginFine = 2f
-        val trayFineH = 2.8f
-        val trayFineGap = 0.7f
-        val totalFineW = maxOf(cachedMaxXFine + marginFine, TRAY_SIZE * 2.5f + marginFine)
+        val marginFine = 1.2f
+        val trayFineH = 2.5f
+        val trayFineGap = 0.5f
+        val totalFineW = maxOf(cachedMaxXFine + marginFine, TRAY_SIZE * 2.45f + marginFine)
         val totalFineH = cachedMaxYFine + marginFine + trayFineH + trayFineGap
         unit = minOf(w / totalFineW, h / totalFineH)
         viewW = w.toFloat()
@@ -159,16 +209,16 @@ class MahjongBoardView @JvmOverloads constructor(
         val topMargin = (h - contentH) / 2f
         trayOffsetY = topMargin
         boardOffsetY = topMargin + (trayFineH + trayFineGap) * unit
-        traySlotSize = unit * 2.3f
-        traySlotGap = unit * 0.3f
+        traySlotSize = unit * 2.4f
+        traySlotGap = unit * 0.25f
     }
 
     private fun rectFor(t: Tile): RectF {
         val shift = t.z * layerShiftPx
         val left = boardOffsetX + t.x * unit - shift
         val top = boardOffsetY + t.y * unit - shift
-        val w = unit * 1.94f
-        val hgt = unit * 2f
+        val w = unit * 1.97f
+        val hgt = unit * 2.03f
         return RectF(left, top, left + w, top + hgt)
     }
 
@@ -181,7 +231,14 @@ class MahjongBoardView @JvmOverloads constructor(
 
     private fun lerp(a: Float, b: Float, t: Float) = a + (b - a) * t
 
-    private fun shrinkRect(r: RectF, scale: Float): RectF {
+    private fun lerpRect(from: RectF, to: RectF, t: Float): RectF = RectF(
+        lerp(from.left, to.left, t),
+        lerp(from.top, to.top, t),
+        lerp(from.right, to.right, t),
+        lerp(from.bottom, to.bottom, t)
+    )
+
+    private fun scaleRect(r: RectF, scale: Float): RectF {
         val cx = r.centerX()
         val cy = r.centerY()
         val hw = r.width() / 2f * scale
@@ -222,7 +279,7 @@ class MahjongBoardView @JvmOverloads constructor(
         canvas.drawRoundRect(rect, radius, radius, borderPaint)
 
         symbolPaint.color = symbolColor(symbol)
-        symbolPaint.textSize = rect.height() * 0.62f
+        symbolPaint.textSize = rect.height() * 0.7f
         symbolPaint.alpha = alpha
         val textY = rect.centerY() - (symbolPaint.descent() + symbolPaint.ascent()) / 2f
         canvas.drawText(symbol, rect.centerX(), textY, symbolPaint)
@@ -275,35 +332,67 @@ class MahjongBoardView @JvmOverloads constructor(
         drawTray(canvas)
 
         val sorted = tiles.sortedBy { it.z }
-        var shakeActive = false
+        var needsMoreFrames = false
         val shake = rejectShake
         val now = System.currentTimeMillis()
+        val activeShuffle = shuffleAnims
 
         for (t in sorted) {
             var rect = rectFor(t)
+
             if (shake != null && shake.tile == t) {
                 val raw = ((now - shake.startTime).toFloat() / SHAKE_DURATION_MS).coerceIn(0f, 1f)
                 if (raw < 1f) {
                     val amp = unit * 0.14f * (1f - raw)
                     val dx = sin(raw * Math.PI.toFloat() * 6f) * amp
                     rect = RectF(rect.left + dx, rect.top, rect.right + dx, rect.bottom)
-                    shakeActive = true
+                    needsMoreFrames = true
                 } else {
                     rejectShake = null
                 }
             }
+
+            if (activeShuffle.isNotEmpty()) {
+                val anim = activeShuffle.firstOrNull { it.tile == t }
+                if (anim != null) {
+                    val raw = ((now - anim.startTime).toFloat() / SHUFFLE_DURATION_MS).coerceIn(0f, 1f)
+                    if (raw < 1f) {
+                        val mag = sin(raw * Math.PI.toFloat()) * unit * 1.1f
+                        val dx = anim.offset.x * mag
+                        val dy = anim.offset.y * mag
+                        rect = RectF(rect.left + dx, rect.top + dy, rect.right + dx, rect.bottom + dy)
+                        needsMoreFrames = true
+                    }
+                }
+            }
+
             if (isCovered(t, tiles)) {
                 drawTileBack(canvas, rect)
             } else {
                 drawTile(canvas, rect, t.symbol, highlight = false, alpha = 255)
             }
         }
-        if (shakeActive) postInvalidateOnAnimation()
+
+        if (activeShuffle.isNotEmpty() && activeShuffle.all { (now - it.startTime) >= SHUFFLE_DURATION_MS }) {
+            shuffleAnims = emptyList()
+        }
 
         traySlots.forEachIndexed { i, t ->
-            if (t != null && clearingSlots.none { it.index == i }) {
+            if (t != null && clearingSlots.none { it.index == i } && growingSlots.none { it.index == i }) {
                 drawTile(canvas, traySlotRect(i), t.symbol, highlight = false, alpha = 255)
             }
+        }
+
+        if (growingSlots.isNotEmpty()) {
+            for (g in growingSlots) {
+                val raw = ((now - g.startTime).toFloat() / GROW_DURATION_MS).coerceIn(0f, 1f)
+                val scale = raw
+                val alpha = (raw * 255).toInt()
+                val rect = scaleRect(traySlotRect(g.index), scale)
+                drawTile(canvas, rect, g.tile.symbol, highlight = false, alpha = alpha)
+            }
+            growingSlots.removeAll { (now - it.startTime) >= GROW_DURATION_MS }
+            needsMoreFrames = needsMoreFrames || growingSlots.isNotEmpty()
         }
 
         if (clearingSlots.isNotEmpty()) {
@@ -312,34 +401,46 @@ class MahjongBoardView @JvmOverloads constructor(
                 val raw = ((now - c.startTime).toFloat() / CLEAR_DURATION_MS).coerceIn(0f, 1f)
                 val scale = 1f - raw
                 val alpha = ((1f - raw) * 255).toInt()
-                val rect = shrinkRect(traySlotRect(c.index), scale)
+                val rect = scaleRect(traySlotRect(c.index), scale)
                 drawTile(canvas, rect, c.tile.symbol, highlight = false, alpha = alpha)
                 if (raw >= 1f) anyDone = true
             }
             if (anyDone) {
-                clearingSlots.removeAll { (System.currentTimeMillis() - it.startTime) >= CLEAR_DURATION_MS }
+                clearingSlots.removeAll { (now - it.startTime) >= CLEAR_DURATION_MS }
                 checkWin()
             }
-            postInvalidateOnAnimation()
+            needsMoreFrames = true
         }
 
         val fly = flying
         if (fly != null) {
             val raw = ((now - fly.startTime).toFloat() / FLY_DURATION_MS).coerceIn(0f, 1f)
             val t = 1f - (1f - raw) * (1f - raw)
-            val rect = RectF(
-                lerp(fly.from.left, fly.to.left, t),
-                lerp(fly.from.top, fly.to.top, t),
-                lerp(fly.from.right, fly.to.right, t),
-                lerp(fly.from.bottom, fly.to.bottom, t)
-            )
+            val rect = lerpRect(fly.from, fly.to, t)
             drawTile(canvas, rect, fly.tile.symbol, highlight = true, alpha = 255)
             if (raw >= 1f) {
                 finishFlight(fly)
             } else {
-                postInvalidateOnAnimation()
+                needsMoreFrames = true
             }
         }
+
+        val uf = undoFlight
+        if (uf != null) {
+            val raw = ((now - uf.startTime).toFloat() / FLY_DURATION_MS).coerceIn(0f, 1f)
+            val t = 1f - (1f - raw) * (1f - raw)
+            val rect = lerpRect(uf.from, uf.to, t)
+            drawTile(canvas, rect, uf.tile.symbol, highlight = true, alpha = 255)
+            if (raw >= 1f) {
+                tiles.add(uf.tile)
+                undoFlight = null
+                invalidate()
+            } else {
+                needsMoreFrames = true
+            }
+        }
+
+        if (needsMoreFrames) postInvalidateOnAnimation()
     }
 
     private fun finishFlight(fly: FlyingTile) {
@@ -351,19 +452,25 @@ class MahjongBoardView @JvmOverloads constructor(
         }
 
         if (pairIndex != null) {
+            val pairTile = traySlots[pairIndex]!!
+            history.addLast(PickRecord(fly.tile, fly.slotIndex, pairTile, pairIndex, moves))
             val now = System.currentTimeMillis()
-            clearingSlots.add(ClearingSlot(traySlots[fly.slotIndex]!!, fly.slotIndex, now))
-            clearingSlots.add(ClearingSlot(traySlots[pairIndex]!!, pairIndex, now))
+            clearingSlots.add(ClearingSlot(fly.tile, fly.slotIndex, now))
+            clearingSlots.add(ClearingSlot(pairTile, pairIndex, now))
             traySlots[fly.slotIndex] = null
             traySlots[pairIndex] = null
             moves++
             listener?.onMovesChanged(moves)
-        } else if (traySlots.all { it != null }) {
-            if (!lostFired) {
-                lostFired = true
-                listener?.onLose()
+        } else {
+            history.addLast(PickRecord(fly.tile, fly.slotIndex, null, -1, moves))
+            if (traySlots.all { it != null }) {
+                if (!lostFired) {
+                    lostFired = true
+                    listener?.onLose()
+                }
             }
         }
+        if (history.size > HISTORY_LIMIT) history.removeFirst()
         invalidate()
     }
 
@@ -376,7 +483,7 @@ class MahjongBoardView @JvmOverloads constructor(
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (event.action != MotionEvent.ACTION_DOWN) return true
-        if (flying != null) return true
+        if (isAnimating()) return true
 
         val px = event.x
         val py = event.y
@@ -392,9 +499,6 @@ class MahjongBoardView @JvmOverloads constructor(
 
         val emptyIndex = traySlots.indexOfFirst { it == null }
         if (emptyIndex == -1) return true
-
-        history.addLast(Snapshot(tiles.toList(), traySlots.toList(), moves))
-        if (history.size > HISTORY_LIMIT) history.removeFirst()
 
         tiles.remove(hit)
         flying = FlyingTile(hit, rectFor(hit), traySlotRect(emptyIndex), emptyIndex, System.currentTimeMillis())
