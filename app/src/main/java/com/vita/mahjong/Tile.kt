@@ -8,21 +8,24 @@ data class Tile(
     var matched: Boolean = false
 )
 
-/** Classic layered pyramid layout: each layer is inset by one half-step and centered on the layer below. */
+/**
+ * Layered step-pyramid: each layer is inset by one full tile width on every
+ * side, so a layer never fully covers the ring of tiles around the edge of
+ * the layer below it (that ring must stay clickable from the start, or the
+ * board is unsolvable from move one).
+ */
 fun generateBoard(): MutableList<Tile> {
     val layerSizes = listOf(
-        6 to 5,
-        5 to 4,
-        4 to 3,
-        3 to 2,
-        2 to 1
+        8 to 6,
+        6 to 4,
+        4 to 2
     )
 
     data class Pos(val x: Int, val y: Int, val z: Int)
     val positions = mutableListOf<Pos>()
     for ((z, size) in layerSizes.withIndex()) {
         val (cols, rows) = size
-        val offset = z
+        val offset = z * 2
         for (row in 0 until rows) {
             for (col in 0 until cols) {
                 positions.add(Pos(offset + col * 2, offset + row * 2, z))
