@@ -20,17 +20,23 @@ fun generateBoard(): MutableList<Tile> {
         2 to 2
     )
 
+    // How many cells to cut from each corner of a layer, forming a staircase
+    // outline instead of a plain rectangle. Cutting only removes tiles, so it
+    // can never break the open-side/covered selectability rules below - it
+    // just carves gaps into a grid that was already provably playable.
+    val cornerCuts = listOf(2, 1, 0)
+
     data class Pos(val x: Int, val y: Int, val z: Int)
     val positions = mutableListOf<Pos>()
     for ((z, size) in layerSizes.withIndex()) {
         val (cols, rows) = size
         val offset = z * 2
-        val corners = setOf(0 to 0, cols - 1 to 0, 0 to rows - 1, cols - 1 to rows - 1)
+        val cut = cornerCuts.getOrElse(z) { 0 }
         for (row in 0 until rows) {
             for (col in 0 until cols) {
-                // Trim the base layer's four corners so the board isn't a plain
-                // rectangle - matches the irregular outline of real tile sets.
-                if (z == 0 && (col to row) in corners) continue
+                val nearHorizontalEdge = col < cut || col >= cols - cut
+                val nearVerticalEdge = row < cut || row >= rows - cut
+                if (cut > 0 && nearHorizontalEdge && nearVerticalEdge) continue
                 positions.add(Pos(offset + col * 2, offset + row * 2, z))
             }
         }

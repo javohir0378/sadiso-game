@@ -11,6 +11,7 @@ import android.graphics.Shader
 import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
+import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.random.Random
 
@@ -22,10 +23,15 @@ class MahjongBoardView @JvmOverloads constructor(
     companion object {
         private const val TRAY_SIZE = 4
         private const val FLY_DURATION_MS = 260L
-        private const val CLEAR_DURATION_MS = 220L
         private const val GROW_DURATION_MS = 220L
         private const val SHAKE_DURATION_MS = 320L
         private const val SHUFFLE_DURATION_MS = 550L
+        private const val CONVERGE_MS = 140L
+        private const val POP_MS = 90L
+        private const val BURST_MS = 380L
+        private const val COMBO_WINDOW_MS = 2200L
+        private const val COMBO_POPUP_MS = 750L
+        private const val PARTICLES_PER_TILE = 9
         private const val HISTORY_LIMIT = 20
     }
 
@@ -50,7 +56,7 @@ class MahjongBoardView @JvmOverloads constructor(
         val startTime: Long
     )
 
-    private data class ClearingSlot(
+    private data class GrowingSlot(
         val tile: Tile,
         val index: Int,
         val startTime: Long
@@ -68,14 +74,37 @@ class MahjongBoardView @JvmOverloads constructor(
         val movesBefore: Int
     )
 
+    private data class Particle(
+        val startX: Float,
+        val startY: Float,
+        val vx: Float,
+        val vy: Float,
+        val color: Int,
+        val size: Float
+    )
+
+    private data class MatchBurst(
+        val tileA: Tile,
+        val tileB: Tile,
+        val slotA: Int,
+        val slotB: Int,
+        val startTime: Long,
+        val particles: List<Particle>
+    )
+
+    private data class ComboPopup(val text: String, val startTime: Long, val cx: Float, val cy: Float)
+
     var listener: Listener? = null
 
     private var tiles: MutableList<Tile> = generateBoard()
     private val traySlots = arrayOfNulls<Tile>(TRAY_SIZE)
     private var flying: FlyingTile? = null
     private var undoFlight: UndoFlight? = null
-    private val clearingSlots = mutableListOf<ClearingSlot>()
-    private val growingSlots = mutableListOf<ClearingSlot>()
+    private val growingSlots = mutableListOf<GrowingSlot>()
+    private var matchBurst: MatchBurst? = null
+    private var comboPopup: ComboPopup? = null
+    private var comboCount = 0
+    private var lastMatchTime = 0L
     private var rejectShake: RejectShake? = null
     private var shuffleAnims: List<ShuffleAnim> = emptyList()
     private val history = ArrayDeque<PickRecord>()
@@ -92,9 +121,10 @@ class MahjongBoardView @JvmOverloads constructor(
     private var traySlotGap = 0f
     private var cachedMaxXFine = 1
     private var cachedMaxYFine = 1
-    private val layerShiftPx get() = unit * 0.22f
+    private val layerShiftPx get() = unit * 0.32f
 
     private val shadowPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val sidePaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         color = Color.parseColor("#8D6E4A")
@@ -124,6 +154,20 @@ class MahjongBoardView @JvmOverloads constructor(
         style = Paint.Style.STROKE
         color = Color.parseColor("#FFC107")
     }
+    private val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.parseColor("#FFF6D6")
+    }
+    private val particlePaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val comboOutlinePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        color = Color.parseColor("#3E2200")
+        textAlign = Paint.Align.CENTER
+    }
+    private val comboPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+        color = Color.parseColor("#FFD54F")
+        textAlign = Paint.Align.CENTER
+    }
 
     private fun isAnimating() =
         flying != null || undoFlight != null || shuffleAnims.isNotEmpty()
@@ -131,8 +175,11 @@ class MahjongBoardView @JvmOverloads constructor(
     fun newGame() {
         tiles = generateBoard()
         for (i in 0 until TRAY_SIZE) traySlots[i] = null
-        clearingSlots.clear()
         growingSlots.clear()
+        matchBurst = null
+        comboPopup = null
+        comboCount = 0
+        lastMatchTime = 0L
         flying = null
         undoFlight = null
         rejectShake = null
@@ -162,7 +209,7 @@ class MahjongBoardView @JvmOverloads constructor(
     }
 
     fun undo() {
-        if (isAnimating() || clearingSlots.isNotEmpty()) return
+        if (isAnimating() || matchBurst != null) return
         val rec = history.removeLastOrNull() ?: return
 
         moves = rec.movesBefore
@@ -173,7 +220,7 @@ class MahjongBoardView @JvmOverloads constructor(
         if (rec.pairTile != null) {
             val now = System.currentTimeMillis()
             traySlots[rec.pairSlot] = rec.pairTile
-            growingSlots.add(ClearingSlot(rec.pairTile, rec.pairSlot, now))
+            growingSlots.add(GrowingSlot(rec.pairTile, rec.pairSlot, now))
         }
         traySlots[rec.slotIndex] = null
 
@@ -246,6 +293,11 @@ class MahjongBoardView @JvmOverloads constructor(
         return RectF(cx - hw, cy - hh, cx + hw, cy + hh)
     }
 
+    private fun rectAt(cx: Float, cy: Float, size: Float): RectF {
+        val h = size / 2f
+        return RectF(cx - h, cy - h, cx + h, cy + h)
+    }
+
     private fun symbolColor(symbol: String): Int {
         val cp = symbol.codePointAt(0)
         return when (cp) {
@@ -260,6 +312,10 @@ class MahjongBoardView @JvmOverloads constructor(
 
     private fun drawTile(canvas: Canvas, rect: RectF, symbol: String, highlight: Boolean, alpha: Int) {
         val radius = unit * 0.28f
+
+        val sideRect = RectF(rect.left, rect.top + unit * 0.12f, rect.right, rect.bottom + unit * 0.12f)
+        sidePaint.color = Color.argb(alpha, 0xC4, 0xAE, 0x7C)
+        canvas.drawRoundRect(sideRect, radius, radius, sidePaint)
 
         val shadowRect = RectF(rect)
         shadowRect.offset(unit * 0.08f, unit * 0.1f)
@@ -293,6 +349,10 @@ class MahjongBoardView @JvmOverloads constructor(
     private fun drawTileBack(canvas: Canvas, rect: RectF) {
         val radius = unit * 0.28f
 
+        val sideRect = RectF(rect.left, rect.top + unit * 0.12f, rect.right, rect.bottom + unit * 0.12f)
+        sidePaint.color = Color.parseColor("#A9740F")
+        canvas.drawRoundRect(sideRect, radius, radius, sidePaint)
+
         val shadowRect = RectF(rect)
         shadowRect.offset(unit * 0.08f, unit * 0.1f)
         shadowPaint.color = Color.argb(90, 0, 0, 0)
@@ -323,6 +383,24 @@ class MahjongBoardView @JvmOverloads constructor(
             canvas.drawRoundRect(r, radius, radius, traySlotPaint)
             canvas.drawRoundRect(r, radius, radius, traySlotBorderPaint)
         }
+    }
+
+    private fun buildParticles(cx: Float, cy: Float, colorA: Int, colorB: Int): List<Particle> {
+        val list = mutableListOf<Particle>()
+        repeat(PARTICLES_PER_TILE) {
+            val angle = Random.nextFloat() * (Math.PI.toFloat() * 2f)
+            val speed = unit * (1.1f + Random.nextFloat() * 1.3f)
+            list.add(
+                Particle(
+                    cx, cy,
+                    cos(angle) * speed,
+                    sin(angle) * speed - unit * 0.6f,
+                    if (it % 2 == 0) colorA else colorB,
+                    unit * (0.09f + Random.nextFloat() * 0.07f)
+                )
+            )
+        }
+        return list
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -378,7 +456,7 @@ class MahjongBoardView @JvmOverloads constructor(
         }
 
         traySlots.forEachIndexed { i, t ->
-            if (t != null && clearingSlots.none { it.index == i } && growingSlots.none { it.index == i }) {
+            if (t != null && growingSlots.none { it.index == i }) {
                 drawTile(canvas, traySlotRect(i), t.symbol, highlight = false, alpha = 255)
             }
         }
@@ -386,30 +464,76 @@ class MahjongBoardView @JvmOverloads constructor(
         if (growingSlots.isNotEmpty()) {
             for (g in growingSlots) {
                 val raw = ((now - g.startTime).toFloat() / GROW_DURATION_MS).coerceIn(0f, 1f)
-                val scale = raw
-                val alpha = (raw * 255).toInt()
-                val rect = scaleRect(traySlotRect(g.index), scale)
-                drawTile(canvas, rect, g.tile.symbol, highlight = false, alpha = alpha)
+                val rect = scaleRect(traySlotRect(g.index), raw)
+                drawTile(canvas, rect, g.tile.symbol, highlight = false, alpha = (raw * 255).toInt())
             }
             growingSlots.removeAll { (now - it.startTime) >= GROW_DURATION_MS }
             needsMoreFrames = needsMoreFrames || growingSlots.isNotEmpty()
         }
 
-        if (clearingSlots.isNotEmpty()) {
-            var anyDone = false
-            for (c in clearingSlots) {
-                val raw = ((now - c.startTime).toFloat() / CLEAR_DURATION_MS).coerceIn(0f, 1f)
-                val scale = 1f - raw
+        val mb = matchBurst
+        if (mb != null) {
+            val elapsed = now - mb.startTime
+            val rectA = traySlotRect(mb.slotA)
+            val rectB = traySlotRect(mb.slotB)
+            val midX = (rectA.centerX() + rectB.centerX()) / 2f
+            val midY = (rectA.centerY() + rectB.centerY()) / 2f
+
+            when {
+                elapsed < CONVERGE_MS -> {
+                    val raw = elapsed.toFloat() / CONVERGE_MS
+                    val scale = lerp(1f, 1.3f, raw)
+                    val cax = lerp(rectA.centerX(), midX, raw * 0.4f)
+                    val cay = lerp(rectA.centerY(), midY, raw * 0.4f)
+                    val cbx = lerp(rectB.centerX(), midX, raw * 0.4f)
+                    val cby = lerp(rectB.centerY(), midY, raw * 0.4f)
+                    drawTile(canvas, rectAt(cax, cay, traySlotSize * scale), mb.tileA.symbol, highlight = true, alpha = 255)
+                    drawTile(canvas, rectAt(cbx, cby, traySlotSize * scale), mb.tileB.symbol, highlight = true, alpha = 255)
+                }
+                elapsed < CONVERGE_MS + POP_MS -> {
+                    val raw = (elapsed - CONVERGE_MS).toFloat() / POP_MS
+                    val glowRadius = lerp(traySlotSize * 0.25f, traySlotSize * 1.05f, raw)
+                    glowPaint.alpha = ((1f - raw) * 255).toInt()
+                    canvas.drawCircle(midX, midY, glowRadius, glowPaint)
+                }
+                elapsed < CONVERGE_MS + POP_MS + BURST_MS -> {
+                    val raw = (elapsed - CONVERGE_MS - POP_MS).toFloat() / BURST_MS
+                    for (p in mb.particles) {
+                        val px = p.startX + p.vx * raw
+                        val py = p.startY + p.vy * raw + 0.5f * unit * 2.4f * raw * raw
+                        val alpha = ((1f - raw) * 255).toInt().coerceIn(0, 255)
+                        particlePaint.color = p.color
+                        particlePaint.alpha = alpha
+                        canvas.drawCircle(px, py, p.size * (1f - raw * 0.4f), particlePaint)
+                    }
+                }
+                else -> {
+                    matchBurst = null
+                    checkWin()
+                }
+            }
+            if (matchBurst != null) needsMoreFrames = true
+        }
+
+        val combo = comboPopup
+        if (combo != null) {
+            val raw = ((now - combo.startTime).toFloat() / COMBO_POPUP_MS).coerceIn(0f, 1f)
+            if (raw < 1f) {
+                val scale = if (raw < 0.25f) lerp(0.5f, 1.15f, raw / 0.25f) else 1f
+                val dy = lerp(0f, -unit * 1.4f, raw)
                 val alpha = ((1f - raw) * 255).toInt()
-                val rect = scaleRect(traySlotRect(c.index), scale)
-                drawTile(canvas, rect, c.tile.symbol, highlight = false, alpha = alpha)
-                if (raw >= 1f) anyDone = true
+                comboOutlinePaint.textSize = unit * 0.85f * scale
+                comboOutlinePaint.strokeWidth = unit * 0.05f
+                comboOutlinePaint.alpha = alpha
+                comboPaint.textSize = unit * 0.85f * scale
+                comboPaint.alpha = alpha
+                val cy = combo.cy + dy
+                canvas.drawText(combo.text, combo.cx, cy, comboOutlinePaint)
+                canvas.drawText(combo.text, combo.cx, cy, comboPaint)
+                needsMoreFrames = true
+            } else {
+                comboPopup = null
             }
-            if (anyDone) {
-                clearingSlots.removeAll { (now - it.startTime) >= CLEAR_DURATION_MS }
-                checkWin()
-            }
-            needsMoreFrames = true
         }
 
         val fly = flying
@@ -454,13 +578,24 @@ class MahjongBoardView @JvmOverloads constructor(
         if (pairIndex != null) {
             val pairTile = traySlots[pairIndex]!!
             history.addLast(PickRecord(fly.tile, fly.slotIndex, pairTile, pairIndex, moves))
+
             val now = System.currentTimeMillis()
-            clearingSlots.add(ClearingSlot(fly.tile, fly.slotIndex, now))
-            clearingSlots.add(ClearingSlot(pairTile, pairIndex, now))
+            val rectA = traySlotRect(fly.slotIndex)
+            val rectB = traySlotRect(pairIndex)
+            val midX = (rectA.centerX() + rectB.centerX()) / 2f
+            val midY = (rectA.centerY() + rectB.centerY()) / 2f
+            val particles = buildParticles(midX, midY, symbolColor(fly.tile.symbol), symbolColor(pairTile.symbol))
+            matchBurst = MatchBurst(fly.tile, pairTile, fly.slotIndex, pairIndex, now, particles)
+
             traySlots[fly.slotIndex] = null
             traySlots[pairIndex] = null
             moves++
             listener?.onMovesChanged(moves)
+
+            comboCount = if (now - lastMatchTime <= COMBO_WINDOW_MS) comboCount + 1 else 1
+            lastMatchTime = now
+            val text = if (comboCount >= 2) "Combo x$comboCount!" else "Juft!"
+            comboPopup = ComboPopup(text, now, midX, trayOffsetY - unit * 0.2f)
         } else {
             history.addLast(PickRecord(fly.tile, fly.slotIndex, null, -1, moves))
             if (traySlots.all { it != null }) {
