@@ -1,7 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="purple_500">#FF6200EE</color>
-    <color name="purple_700">#FF3700B3</color>
-    <color name="teal_200">#FF03DAC5</color>
     <color name="ic_launcher_background">#1B5E20</color>
+
+    <color name="bg_gradient_top">#1B5E3A</color>
+    <color name="bg_gradient_mid">#0F3D24</color>
+    <color name="bg_gradient_bottom">#04140C</color>
+    <color name="accent_gold">#FFC107</color>
+    <color name="circle_button_fill">#5D4037</color>
+    <color name="circle_button_border">#8D6E63</color>
+    <color name="pill_bg">#33000000</color>
+    <color name="label_muted">#CFC7B0</color>
 </resources>

@@ -1,10 +1,15 @@
 package com.vita.mahjong
 
 import android.app.AlertDialog
+import android.graphics.Color
 import android.os.Bundle
-import android.widget.Button
+import android.view.View
+import android.widget.ImageButton
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 
 class MainActivity : AppCompatActivity(), MahjongBoardView.Listener {
 
@@ -13,20 +18,32 @@ class MainActivity : AppCompatActivity(), MahjongBoardView.Listener {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        window.statusBarColor = Color.TRANSPARENT
+        window.navigationBarColor = Color.TRANSPARENT
+
         setContentView(R.layout.activity_main)
+
+        val contentRoot = findViewById<View>(R.id.contentRoot)
+        ViewCompat.setOnApplyWindowInsetsListener(contentRoot) { v, insets ->
+            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            v.setPadding(bars.left, bars.top, bars.right, bars.bottom)
+            insets
+        }
 
         board = findViewById(R.id.board)
         statusText = findViewById(R.id.statusText)
         board.listener = this
 
-        findViewById<Button>(R.id.newGameButton).setOnClickListener { board.newGame() }
-        findViewById<Button>(R.id.shuffleButton).setOnClickListener { board.shuffleRemaining() }
+        findViewById<ImageButton>(R.id.newGameButton).setOnClickListener { board.newGame() }
+        findViewById<ImageButton>(R.id.shuffleButton).setOnClickListener { board.shuffleRemaining() }
 
         onMovesChanged(0)
     }
 
     override fun onMovesChanged(moves: Int) {
-        statusText.text = "Vita Mahjong — urinishlar: $moves"
+        statusText.text = "Urinishlar: $moves"
     }
 
     override fun onWin(moves: Int) {
