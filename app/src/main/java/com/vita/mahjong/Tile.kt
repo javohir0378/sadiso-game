@@ -31,12 +31,18 @@ fun generateBoard(): MutableList<Tile> {
     }
 
     val symbolSet = listOf("🀇", "🀈", "🀉", "🀐", "🀑", "🀙", "🀄")
-    val counts = intArrayOf(10, 10, 10, 8, 8, 8, 8) // wraps up to positions.size, all even
-    val symbols = mutableListOf<String>()
-    for (i in symbolSet.indices) repeat(counts[i]) { symbols.add(symbolSet[i]) }
-    symbols.shuffle()
 
-    check(symbols.size == positions.size) { "Symbol count (${symbols.size}) must match tile count (${positions.size})" }
+    // Distribute tiles evenly across symbols, always in even counts, so the
+    // total exactly matches positions.size regardless of layerSizes above.
+    val pairsTotal = positions.size / 2
+    val basePairs = pairsTotal / symbolSet.size
+    val extraPairs = pairsTotal % symbolSet.size
+    val symbols = mutableListOf<String>()
+    symbolSet.forEachIndexed { i, symbol ->
+        val pairs = basePairs + if (i < extraPairs) 1 else 0
+        repeat(pairs * 2) { symbols.add(symbol) }
+    }
+    symbols.shuffle()
 
     return positions.mapIndexed { i, p -> Tile(p.x, p.y, p.z, symbols[i]) }.toMutableList()
 }
