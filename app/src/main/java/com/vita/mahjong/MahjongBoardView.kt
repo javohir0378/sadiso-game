@@ -22,16 +22,16 @@ class MahjongBoardView @JvmOverloads constructor(
 
     companion object {
         private const val TRAY_SIZE = 4
-        private const val FLY_DURATION_MS = 260L
-        private const val GROW_DURATION_MS = 220L
-        private const val SHAKE_DURATION_MS = 320L
-        private const val SHUFFLE_DURATION_MS = 550L
-        private const val CONVERGE_MS = 140L
-        private const val POP_MS = 90L
-        private const val BURST_MS = 380L
+        private const val FLY_DURATION_MS = 440L
+        private const val GROW_DURATION_MS = 340L
+        private const val SHAKE_DURATION_MS = 420L
+        private const val SHUFFLE_DURATION_MS = 950L
+        private const val CONVERGE_MS = 280L
+        private const val POP_MS = 190L
+        private const val BURST_MS = 700L
         private const val COMBO_WINDOW_MS = 2200L
-        private const val COMBO_POPUP_MS = 750L
-        private const val PARTICLES_PER_TILE = 9
+        private const val COMBO_POPUP_MS = 1150L
+        private const val PARTICLES_PER_TILE = 11
         private const val HISTORY_LIMIT = 20
     }
 
@@ -157,6 +157,10 @@ class MahjongBoardView @JvmOverloads constructor(
     private val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.parseColor("#FFF6D6")
     }
+    private val ringPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        color = Color.parseColor("#FFE082")
+    }
     private val particlePaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val comboOutlinePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
@@ -277,6 +281,14 @@ class MahjongBoardView @JvmOverloads constructor(
     }
 
     private fun lerp(a: Float, b: Float, t: Float) = a + (b - a) * t
+
+    private fun easeInOutCubic(t: Float): Float =
+        if (t < 0.5f) 4f * t * t * t else 1f - (-2f * t + 2f).let { it * it * it } / 2f
+
+    private fun easeOutCubic(t: Float): Float {
+        val f = t - 1f
+        return f * f * f + 1f
+    }
 
     private fun lerpRect(from: RectF, to: RectF, t: Float): RectF = RectF(
         lerp(from.left, to.left, t),
@@ -481,20 +493,26 @@ class MahjongBoardView @JvmOverloads constructor(
 
             when {
                 elapsed < CONVERGE_MS -> {
-                    val raw = elapsed.toFloat() / CONVERGE_MS
-                    val scale = lerp(1f, 1.3f, raw)
-                    val cax = lerp(rectA.centerX(), midX, raw * 0.4f)
-                    val cay = lerp(rectA.centerY(), midY, raw * 0.4f)
-                    val cbx = lerp(rectB.centerX(), midX, raw * 0.4f)
-                    val cby = lerp(rectB.centerY(), midY, raw * 0.4f)
+                    val raw = easeInOutCubic((elapsed.toFloat() / CONVERGE_MS).coerceIn(0f, 1f))
+                    val scale = lerp(1f, 1.35f, raw)
+                    val cax = lerp(rectA.centerX(), midX, raw * 0.42f)
+                    val cay = lerp(rectA.centerY(), midY, raw * 0.42f)
+                    val cbx = lerp(rectB.centerX(), midX, raw * 0.42f)
+                    val cby = lerp(rectB.centerY(), midY, raw * 0.42f)
                     drawTile(canvas, rectAt(cax, cay, traySlotSize * scale), mb.tileA.symbol, highlight = true, alpha = 255)
                     drawTile(canvas, rectAt(cbx, cby, traySlotSize * scale), mb.tileB.symbol, highlight = true, alpha = 255)
                 }
                 elapsed < CONVERGE_MS + POP_MS -> {
                     val raw = (elapsed - CONVERGE_MS).toFloat() / POP_MS
-                    val glowRadius = lerp(traySlotSize * 0.25f, traySlotSize * 1.05f, raw)
+                    val eased = easeOutCubic(raw)
+                    val glowRadius = lerp(traySlotSize * 0.3f, traySlotSize * 1.15f, eased)
                     glowPaint.alpha = ((1f - raw) * 255).toInt()
                     canvas.drawCircle(midX, midY, glowRadius, glowPaint)
+
+                    val ringRadius = lerp(traySlotSize * 0.35f, traySlotSize * 1.5f, eased)
+                    ringPaint.strokeWidth = unit * 0.09f * (1f - raw)
+                    ringPaint.alpha = ((1f - raw) * 220).toInt()
+                    canvas.drawCircle(midX, midY, ringRadius, ringPaint)
                 }
                 elapsed < CONVERGE_MS + POP_MS + BURST_MS -> {
                     val raw = (elapsed - CONVERGE_MS - POP_MS).toFloat() / BURST_MS
@@ -539,7 +557,7 @@ class MahjongBoardView @JvmOverloads constructor(
         val fly = flying
         if (fly != null) {
             val raw = ((now - fly.startTime).toFloat() / FLY_DURATION_MS).coerceIn(0f, 1f)
-            val t = 1f - (1f - raw) * (1f - raw)
+            val t = easeInOutCubic(raw)
             val rect = lerpRect(fly.from, fly.to, t)
             drawTile(canvas, rect, fly.tile.symbol, highlight = true, alpha = 255)
             if (raw >= 1f) {
@@ -552,7 +570,7 @@ class MahjongBoardView @JvmOverloads constructor(
         val uf = undoFlight
         if (uf != null) {
             val raw = ((now - uf.startTime).toFloat() / FLY_DURATION_MS).coerceIn(0f, 1f)
-            val t = 1f - (1f - raw) * (1f - raw)
+            val t = easeInOutCubic(raw)
             val rect = lerpRect(uf.from, uf.to, t)
             drawTile(canvas, rect, uf.tile.symbol, highlight = true, alpha = 255)
             if (raw >= 1f) {
