@@ -5,9 +5,12 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.LinearGradient
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.PointF
+import android.graphics.RadialGradient
 import android.graphics.RectF
 import android.graphics.Shader
+import android.graphics.Typeface
 import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
@@ -102,6 +105,14 @@ class MahjongBoardView @JvmOverloads constructor(
 
     private data class ComboPopup(val text: String, val startTime: Long, val cx: Float, val cy: Float)
 
+    private data class AmbientParticle(
+        val bx: Float,
+        val by: Float,
+        val r: Float,
+        val phase: Float,
+        val speed: Float
+    )
+
     var listener: Listener? = null
 
     private var tiles: MutableList<Tile> = generateBoard()
@@ -115,6 +126,7 @@ class MahjongBoardView @JvmOverloads constructor(
     private var lastMatchTime = 0L
     private var rejectShake: RejectShake? = null
     private var shuffleAnims: List<ShuffleAnim> = emptyList()
+    private var ambientParticles: List<AmbientParticle> = emptyList()
     private val history = ArrayDeque<PickRecord>()
     private var moves = 0
     private var wonFired = false
@@ -151,9 +163,29 @@ class MahjongBoardView @JvmOverloads constructor(
         style = Paint.Style.STROKE
         color = Color.parseColor("#E8B84B")
     }
-    private val symbolPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        textAlign = Paint.Align.CENTER
+    private val glossPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val bevelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        color = Color.WHITE
     }
+    private val numeralPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        textAlign = Paint.Align.CENTER
+        typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
+    }
+    private val accentPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+    }
+    private val iconStrokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeCap = Paint.Cap.ROUND
+        strokeJoin = Paint.Join.ROUND
+    }
+    private val selectPulsePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        color = Color.parseColor("#FFD54F")
+    }
+    private val vignettePaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val ambientParticlePaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val traySlotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.argb(160, 74, 20, 140)
         style = Paint.Style.FILL
@@ -336,66 +368,279 @@ class MahjongBoardView @JvmOverloads constructor(
     private fun drawTile(canvas: Canvas, rect: RectF, symbol: String, highlight: Boolean, alpha: Int) {
         val radius = unit * 0.28f
 
-        val sideRect = RectF(rect.left, rect.top + unit * 0.12f, rect.right, rect.bottom + unit * 0.12f)
+        val sideRect = RectF(rect.left, rect.top + unit * 0.13f, rect.right, rect.bottom + unit * 0.13f)
         sidePaint.color = Color.argb(alpha, 0xC4, 0xAE, 0x7C)
         canvas.drawRoundRect(sideRect, radius, radius, sidePaint)
 
-        val shadowRect = RectF(rect)
-        shadowRect.offset(unit * 0.08f, unit * 0.1f)
-        shadowPaint.color = Color.argb(90 * alpha / 255, 0, 0, 0)
-        canvas.drawRoundRect(shadowRect, radius, radius, shadowPaint)
+        for (i in 2 downTo 0) {
+            val off = unit * (0.05f + i * 0.045f)
+            val shadowRect = RectF(rect)
+            shadowRect.offset(off, off * 1.15f)
+            shadowPaint.color = Color.argb((26 - i * 6) * alpha / 255, 0, 0, 0)
+            canvas.drawRoundRect(shadowRect, radius, radius, shadowPaint)
+        }
 
         facePaint.shader = LinearGradient(
             rect.left, rect.top, rect.left, rect.bottom,
-            Color.parseColor("#FFFEF9"), Color.parseColor("#F3E7C9"),
+            Color.parseColor("#FFFEF9"), Color.parseColor("#F1E4C4"),
             Shader.TileMode.CLAMP
         )
         facePaint.alpha = alpha
         canvas.drawRoundRect(rect, radius, radius, facePaint)
 
-        borderPaint.strokeWidth = unit * 0.07f
+        canvas.save()
+        canvas.clipPath(Path().apply { addRoundRect(rect, radius, radius, Path.Direction.CW) })
+        glossPaint.shader = RadialGradient(
+            rect.left + rect.width() * 0.32f, rect.top + rect.height() * 0.14f, rect.width() * 0.85f,
+            Color.argb(120 * alpha / 255, 255, 255, 255), Color.argb(0, 255, 255, 255),
+            Shader.TileMode.CLAMP
+        )
+        canvas.drawRect(rect, glossPaint)
+        canvas.restore()
+
+        borderPaint.strokeWidth = unit * 0.055f
         borderPaint.alpha = alpha
         canvas.drawRoundRect(rect, radius, radius, borderPaint)
 
-        symbolPaint.color = symbolColor(symbol)
-        symbolPaint.textSize = rect.height() * 0.7f
-        symbolPaint.alpha = alpha
-        val textY = rect.centerY() - (symbolPaint.descent() + symbolPaint.ascent()) / 2f
-        canvas.drawText(symbol, rect.centerX(), textY, symbolPaint)
+        val innerRect = RectF(rect)
+        innerRect.inset(unit * 0.07f, unit * 0.07f)
+        bevelPaint.strokeWidth = unit * 0.03f
+        bevelPaint.alpha = 90 * alpha / 255
+        canvas.drawRoundRect(innerRect, radius * 0.8f, radius * 0.8f, bevelPaint)
+
+        drawSymbolIcon(canvas, rect, symbol, alpha)
 
         if (highlight) {
             selectedBorderPaint.strokeWidth = unit * 0.16f
+            selectedBorderPaint.alpha = alpha
             canvas.drawRoundRect(rect, radius, radius, selectedBorderPaint)
+        }
+    }
+
+    private fun suitAndNumber(symbol: String): Pair<Int, Int> {
+        val cp = symbol.codePointAt(0)
+        return when (cp) {
+            in 0x1F007..0x1F00F -> 0 to (cp - 0x1F007 + 1)
+            in 0x1F010..0x1F018 -> 1 to (cp - 0x1F010 + 1)
+            in 0x1F019..0x1F021 -> 2 to (cp - 0x1F019 + 1)
+            0x1F004 -> 3 to 1
+            0x1F005 -> 3 to 2
+            else -> 0 to 1
+        }
+    }
+
+    private fun drawSymbolIcon(canvas: Canvas, rect: RectF, symbol: String, alpha: Int) {
+        val (suit, num) = suitAndNumber(symbol)
+        val box = RectF(rect)
+        box.inset(rect.width() * 0.17f, rect.height() * 0.15f)
+        when (suit) {
+            0 -> drawCharacterIcon(canvas, box, num, alpha)
+            1 -> drawBambooIcon(canvas, box, num, alpha)
+            2 -> drawDotIcon(canvas, box, num, alpha)
+            else -> drawHonorIcon(canvas, box, num, alpha)
+        }
+    }
+
+    private fun drawCharacterIcon(canvas: Canvas, box: RectF, num: Int, alpha: Int) {
+        numeralPaint.color = Color.parseColor("#28345E")
+        numeralPaint.alpha = alpha
+        numeralPaint.textSize = box.height() * 0.74f
+        val cy = box.centerY() - box.height() * 0.07f
+        val textY = cy - (numeralPaint.descent() + numeralPaint.ascent()) / 2f
+        canvas.drawText(num.toString(), box.centerX(), textY, numeralPaint)
+
+        accentPaint.color = Color.parseColor("#D8A93A")
+        accentPaint.alpha = alpha
+        val barHalfW = box.width() * 0.24f
+        val barY = box.bottom - box.height() * 0.05f
+        val barH = box.height() * 0.05f
+        val barRect = RectF(box.centerX() - barHalfW, barY - barH, box.centerX() + barHalfW, barY + barH)
+        canvas.drawRoundRect(barRect, barH, barH, accentPaint)
+    }
+
+    private fun drawBambooIcon(canvas: Canvas, box: RectF, count: Int, alpha: Int) {
+        val n = count.coerceIn(1, 5)
+        val gap = box.width() * 0.1f
+        val stalkW = (box.width() - gap * (n - 1)) / n
+        for (i in 0 until n) {
+            val left = box.left + i * (stalkW + gap)
+            val stalkRect = RectF(left, box.top, left + stalkW, box.bottom)
+
+            accentPaint.color = Color.parseColor("#2E8B45")
+            accentPaint.alpha = alpha
+            canvas.drawRoundRect(stalkRect, stalkW * 0.4f, stalkW * 0.4f, accentPaint)
+
+            accentPaint.color = Color.parseColor("#7ED08A")
+            accentPaint.alpha = alpha * 140 / 255
+            val hlRect = RectF(stalkRect.left + stalkW * 0.14f, stalkRect.top + box.height() * 0.05f, stalkRect.left + stalkW * 0.34f, stalkRect.bottom - box.height() * 0.05f)
+            canvas.drawRoundRect(hlRect, stalkW * 0.15f, stalkW * 0.15f, accentPaint)
+
+            iconStrokePaint.color = Color.parseColor("#195C29")
+            iconStrokePaint.strokeWidth = stalkW * 0.16f
+            iconStrokePaint.alpha = alpha
+            val j1 = box.top + box.height() * 0.36f
+            val j2 = box.top + box.height() * 0.67f
+            canvas.drawLine(stalkRect.left, j1, stalkRect.right, j1, iconStrokePaint)
+            canvas.drawLine(stalkRect.left, j2, stalkRect.right, j2, iconStrokePaint)
+        }
+    }
+
+    private fun drawDotIcon(canvas: Canvas, box: RectF, count: Int, alpha: Int) {
+        val positions = when (count.coerceIn(1, 3)) {
+            1 -> listOf(PointF(0.5f, 0.5f))
+            2 -> listOf(PointF(0.26f, 0.26f), PointF(0.74f, 0.74f))
+            else -> listOf(PointF(0.22f, 0.22f), PointF(0.5f, 0.5f), PointF(0.78f, 0.78f))
+        }
+        val r = box.width() * (if (count == 1) 0.32f else 0.22f)
+        for (p in positions) {
+            val cx = box.left + box.width() * p.x
+            val cy = box.top + box.height() * p.y
+            accentPaint.shader = RadialGradient(
+                cx - r * 0.3f, cy - r * 0.3f, r * 1.6f,
+                Color.parseColor("#6FB7F0"), Color.parseColor("#14508F"),
+                Shader.TileMode.CLAMP
+            )
+            accentPaint.alpha = alpha
+            canvas.drawCircle(cx, cy, r, accentPaint)
+            accentPaint.shader = null
+
+            iconStrokePaint.color = Color.parseColor("#0B3760")
+            iconStrokePaint.strokeWidth = r * 0.14f
+            iconStrokePaint.alpha = alpha
+            canvas.drawCircle(cx, cy, r, iconStrokePaint)
+
+            accentPaint.color = Color.argb(150 * alpha / 255, 255, 255, 255)
+            canvas.drawCircle(cx - r * 0.32f, cy - r * 0.32f, r * 0.26f, accentPaint)
+        }
+    }
+
+    private fun drawHonorIcon(canvas: Canvas, box: RectF, num: Int, alpha: Int) {
+        val cx = box.centerX()
+        val cy = box.centerY()
+        val r = box.width() * 0.42f
+        val baseColor = if (num == 1) Color.parseColor("#C62828") else Color.parseColor("#2E7D32")
+        val darkColor = if (num == 1) Color.parseColor("#7A1414") else Color.parseColor("#1B4F1F")
+
+        accentPaint.shader = RadialGradient(
+            cx - r * 0.3f, cy - r * 0.3f, r * 1.6f,
+            baseColor, darkColor, Shader.TileMode.CLAMP
+        )
+        accentPaint.alpha = alpha
+        canvas.drawCircle(cx, cy, r, accentPaint)
+        accentPaint.shader = null
+
+        iconStrokePaint.color = Color.parseColor("#F5E7BE")
+        iconStrokePaint.strokeWidth = r * 0.12f
+        iconStrokePaint.alpha = alpha
+        canvas.drawCircle(cx, cy, r, iconStrokePaint)
+
+        iconStrokePaint.color = Color.WHITE
+        iconStrokePaint.strokeWidth = r * 0.22f
+        iconStrokePaint.alpha = alpha
+        if (num == 1) {
+            canvas.drawLine(cx - r * 0.38f, cy, cx + r * 0.38f, cy, iconStrokePaint)
+            canvas.drawLine(cx, cy - r * 0.38f, cx, cy + r * 0.38f, iconStrokePaint)
+        } else {
+            val path = Path()
+            path.moveTo(cx - r * 0.35f, cy)
+            path.lineTo(cx - r * 0.08f, cy + r * 0.32f)
+            path.lineTo(cx + r * 0.4f, cy - r * 0.32f)
+            canvas.drawPath(path, iconStrokePaint)
         }
     }
 
     private fun drawTileBack(canvas: Canvas, rect: RectF) {
         val radius = unit * 0.28f
 
-        val sideRect = RectF(rect.left, rect.top + unit * 0.12f, rect.right, rect.bottom + unit * 0.12f)
+        val sideRect = RectF(rect.left, rect.top + unit * 0.13f, rect.right, rect.bottom + unit * 0.13f)
         sidePaint.color = Color.parseColor("#A9740F")
         canvas.drawRoundRect(sideRect, radius, radius, sidePaint)
 
-        val shadowRect = RectF(rect)
-        shadowRect.offset(unit * 0.08f, unit * 0.1f)
-        shadowPaint.color = Color.argb(90, 0, 0, 0)
-        canvas.drawRoundRect(shadowRect, radius, radius, shadowPaint)
+        for (i in 2 downTo 0) {
+            val off = unit * (0.05f + i * 0.045f)
+            val shadowRect = RectF(rect)
+            shadowRect.offset(off, off * 1.15f)
+            shadowPaint.color = Color.argb(26 - i * 6, 0, 0, 0)
+            canvas.drawRoundRect(shadowRect, radius, radius, shadowPaint)
+        }
 
-        backPaint.shader = LinearGradient(
-            rect.left, rect.top, rect.left, rect.bottom,
-            Color.parseColor("#F6C244"), Color.parseColor("#D89A1E"),
+        backPaint.shader = RadialGradient(
+            rect.left + rect.width() * 0.32f, rect.top + rect.height() * 0.24f, rect.width() * 0.95f,
+            Color.parseColor("#FBD26B"), Color.parseColor("#C4860F"),
             Shader.TileMode.CLAMP
         )
         canvas.drawRoundRect(rect, radius, radius, backPaint)
 
-        backBorderPaint.strokeWidth = unit * 0.07f
+        canvas.save()
+        canvas.clipPath(Path().apply { addRoundRect(rect, radius, radius, Path.Direction.CW) })
+        glossPaint.shader = RadialGradient(
+            rect.left + rect.width() * 0.3f, rect.top + rect.height() * 0.12f, rect.width() * 0.7f,
+            Color.argb(110, 255, 255, 255), Color.argb(0, 255, 255, 255),
+            Shader.TileMode.CLAMP
+        )
+        canvas.drawRect(rect, glossPaint)
+        canvas.restore()
+
+        backBorderPaint.strokeWidth = unit * 0.06f
         canvas.drawRoundRect(rect, radius, radius, backBorderPaint)
 
-        medallionPaint.strokeWidth = unit * 0.05f
+        medallionPaint.strokeWidth = unit * 0.045f
         val cx = rect.centerX()
         val cy = rect.centerY()
-        canvas.drawCircle(cx, cy, rect.width() * 0.28f, medallionPaint)
-        canvas.drawCircle(cx, cy, rect.width() * 0.15f, medallionPaint)
+        canvas.drawCircle(cx, cy, rect.width() * 0.3f, medallionPaint)
+        canvas.drawCircle(cx, cy, rect.width() * 0.17f, medallionPaint)
+        accentPaint.shader = null
+        accentPaint.color = Color.parseColor("#7A4A1E")
+        accentPaint.alpha = 255
+        canvas.drawCircle(cx, cy, rect.width() * 0.05f, accentPaint)
+    }
+
+    private fun ensureAmbientParticles() {
+        if (ambientParticles.isNotEmpty()) return
+        val list = mutableListOf<AmbientParticle>()
+        repeat(18) {
+            list.add(
+                AmbientParticle(
+                    bx = Random.nextFloat(),
+                    by = Random.nextFloat(),
+                    r = unit * (0.05f + Random.nextFloat() * 0.09f),
+                    phase = Random.nextFloat() * 6.2832f,
+                    speed = 0.00025f + Random.nextFloat() * 0.00035f
+                )
+            )
+        }
+        ambientParticles = list
+    }
+
+    private fun drawAmbientBackdrop(canvas: Canvas, now: Long) {
+        if (width <= 0 || height <= 0 || unit <= 0f) return
+        ensureAmbientParticles()
+        val w = width.toFloat()
+        val h = height.toFloat()
+
+        vignettePaint.shader = RadialGradient(
+            w / 2f, h * 0.4f, maxOf(w, h) * 0.78f,
+            Color.argb(0, 0, 0, 0), Color.argb(85, 0, 0, 0),
+            Shader.TileMode.CLAMP
+        )
+        canvas.drawRect(0f, 0f, w, h, vignettePaint)
+
+        for (p in ambientParticles) {
+            val t = now * p.speed + p.phase
+            val dx = sin(t) * w * 0.03f
+            val dy = cos(t * 0.8f) * h * 0.025f
+            val cx = p.bx * w + dx
+            val cy = p.by * h + dy
+            val pulse = 0.5f + 0.5f * sin(t * 1.3f)
+            val rad = p.r * (1f + pulse * 0.4f)
+            ambientParticlePaint.shader = RadialGradient(
+                cx, cy, rad,
+                Color.argb((70 + pulse * 60).toInt(), 255, 236, 179),
+                Color.argb(0, 255, 236, 179),
+                Shader.TileMode.CLAMP
+            )
+            canvas.drawCircle(cx, cy, rad, ambientParticlePaint)
+        }
     }
 
     private fun drawTray(canvas: Canvas) {
@@ -477,12 +722,14 @@ class MahjongBoardView @JvmOverloads constructor(
         super.onDraw(canvas)
         if (unit <= 0f) return
 
+        var needsMoreFrames = true
+        val now = System.currentTimeMillis()
+        drawAmbientBackdrop(canvas, now)
+
         drawTray(canvas)
 
         val sorted = tiles.sortedBy { it.z }
-        var needsMoreFrames = false
         val shake = rejectShake
-        val now = System.currentTimeMillis()
         val activeShuffle = shuffleAnims
 
         for (t in sorted) {
@@ -517,6 +764,20 @@ class MahjongBoardView @JvmOverloads constructor(
             if (isCovered(t, tiles)) {
                 drawTileBack(canvas, rect)
             } else {
+                if (isSelectable(t, tiles)) {
+                    val pulse = 0.5f + 0.5f * sin(now * 0.004f + t.x * 0.3f + t.y * 0.17f)
+                    val ringHalfW = rect.width() / 2f * (1.05f + pulse * 0.08f)
+                    val ringHalfH = rect.height() / 2f * (1.05f + pulse * 0.08f)
+                    selectPulsePaint.strokeWidth = unit * (0.05f + pulse * 0.03f)
+                    selectPulsePaint.alpha = (70 + pulse * 90).toInt()
+                    canvas.drawRoundRect(
+                        RectF(
+                            rect.centerX() - ringHalfW, rect.centerY() - ringHalfH,
+                            rect.centerX() + ringHalfW, rect.centerY() + ringHalfH
+                        ),
+                        unit * 0.32f, unit * 0.32f, selectPulsePaint
+                    )
+                }
                 drawTile(canvas, rect, t.symbol, highlight = false, alpha = 255)
             }
         }
@@ -609,9 +870,13 @@ class MahjongBoardView @JvmOverloads constructor(
                 comboPaint.textSize = unit * 0.85f * scale
                 comboPaint.alpha = alpha
                 val cy = combo.cy + dy
+                if (raw < 0.35f) {
+                    val glowRaw = raw / 0.35f
+                    glowPaint.alpha = ((1f - glowRaw) * 150).toInt()
+                    canvas.drawCircle(combo.cx, cy, unit * (0.6f + glowRaw * 1.5f), glowPaint)
+                }
                 canvas.drawText(combo.text, combo.cx, cy, comboOutlinePaint)
                 canvas.drawText(combo.text, combo.cx, cy, comboPaint)
-                needsMoreFrames = true
             } else {
                 comboPopup = null
             }

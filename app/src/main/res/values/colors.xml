@@ -2,9 +2,11 @@
 <resources>
     <color name="ic_launcher_background">#1B5E20</color>
 
-    <color name="bg_gradient_top">#1B5E3A</color>
-    <color name="bg_gradient_mid">#0F3D24</color>
-    <color name="bg_gradient_bottom">#04140C</color>
+    <color name="bg_gradient_top">#1E6B45</color>
+    <color name="bg_gradient_mid">#0E3D28</color>
+    <color name="bg_gradient_bottom">#03110A</color>
+    <color name="bg_sheen_start">#28FFE4A6</color>
+    <color name="bg_sheen_end">#00FFE4A6</color>
     <color name="accent_gold">#FFC107</color>
     <color name="circle_button_fill">#5D4037</color>
     <color name="circle_button_border">#8D6E63</color>
