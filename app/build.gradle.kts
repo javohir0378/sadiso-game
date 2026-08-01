@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace = "com.vita.mahjong"
+    namespace = "com.sadiso.game"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.vita.mahjong"
+        applicationId = "com.sadiso.game"
         minSdk = 24
         targetSdk = 34
         versionCode = 1

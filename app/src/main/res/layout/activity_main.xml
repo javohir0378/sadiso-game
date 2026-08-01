@@ -44,7 +44,7 @@
                 android:textStyle="bold" />
         </LinearLayout>
 
-        <com.vita.mahjong.MahjongBoardView
+        <com.sadiso.game.MahjongBoardView
             android:id="@+id/board"
             android:layout_width="match_parent"
             android:layout_height="0dp"

@@ -1,4 +1,4 @@
-package com.vita.mahjong
+package com.sadiso.game
 
 import android.app.AlertDialog
 import android.graphics.Color

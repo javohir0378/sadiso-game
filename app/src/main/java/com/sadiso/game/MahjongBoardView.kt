@@ -1,4 +1,4 @@
-package com.vita.mahjong
+package com.sadiso.game
 
 import android.content.Context
 import android.graphics.Canvas

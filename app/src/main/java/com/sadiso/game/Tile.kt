@@ -1,4 +1,4 @@
-package com.vita.mahjong
+package com.sadiso.game
 
 data class Tile(
     val x: Int,
