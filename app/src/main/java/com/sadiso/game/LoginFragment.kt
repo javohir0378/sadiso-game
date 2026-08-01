@@ -1,78 +1,62 @@
 package com.sadiso.game
 
-import android.content.Intent
+import android.content.Context
+import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Typeface
 import android.text.InputType
 import android.view.Gravity
 import android.view.View
 import android.view.animation.OvershootInterpolator
-import android.os.Bundle
 import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
-import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
-import androidx.core.view.ViewCompat
-import androidx.core.view.WindowCompat
-import androidx.core.view.WindowInsetsCompat
 import com.sadiso.game.tdlib.TdlibController
 import org.drinkless.tdlib.TdApi
 import kotlin.math.sin
 
-class LoginActivity : AppCompatActivity(), TdlibController.Listener {
+class LoginFragment : BaseFragment(), TdlibController.Listener {
 
+    private lateinit var ctx: Context
     private lateinit var stepContainer: FrameLayout
-    private lateinit var controller: TdlibController
     private var currentStepTag: String? = null
     private var currentStepView: View? = null
     private var currentErrorView: TextView? = null
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+    private val controller: TdlibController
+        get() = (parentActivity as LaunchActivity).tdlib
 
-        WindowCompat.setDecorFitsSystemWindows(window, false)
-        window.statusBarColor = Color.TRANSPARENT
-        window.navigationBarColor = Color.TRANSPARENT
+    override fun onFragmentCreate() {
+        controller.listener = this
+    }
 
-        val root = FrameLayout(this).apply {
-            setBackgroundResource(R.drawable.bg_gradient)
+    override fun onFragmentDestroy() {
+        controller.listener = null
+        super.onFragmentDestroy()
+    }
+
+    override fun createView(context: Context): View {
+        ctx = context
+
+        val root = FrameLayout(ctx)
+        root.addView(LoginBackdropView(ctx), FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+
+        stepContainer = FrameLayout(ctx).apply {
+            setPadding(ctx.dp(28), 0, ctx.dp(28), 0)
         }
-        root.addView(LoginBackdropView(this), FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
-
-        val loginRoot = FrameLayout(this)
-        root.addView(loginRoot, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
-
-        stepContainer = FrameLayout(this).apply {
-            setPadding(dp(28), 0, dp(28), 0)
-        }
-        loginRoot.addView(
+        root.addView(
             stepContainer,
             FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT).apply {
                 gravity = Gravity.CENTER
             }
         )
 
-        setContentView(root)
-
-        ViewCompat.setOnApplyWindowInsetsListener(loginRoot) { v, insets ->
-            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-            v.setPadding(bars.left, bars.top, bars.right, bars.bottom)
-            insets
-        }
-
         showLoadingStep()
-
-        controller = TdlibController(applicationContext)
-        controller.listener = this
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        controller.listener = null
+        return root
     }
 
     override fun onAuthState(state: TdApi.AuthorizationState) {
@@ -83,10 +67,7 @@ class LoginActivity : AppCompatActivity(), TdlibController.Listener {
             is TdApi.AuthorizationStateWaitEmailAddress -> showEmailStep()
             is TdApi.AuthorizationStateWaitEmailCode -> showEmailCodeStep()
             is TdApi.AuthorizationStateWaitRegistration -> showRegistrationStep()
-            is TdApi.AuthorizationStateReady -> {
-                startActivity(Intent(this, MainMenuActivity::class.java))
-                finish()
-            }
+            is TdApi.AuthorizationStateReady -> presentAsRoot(MainMenuFragment())
             else -> showLoadingStep()
         }
     }
@@ -97,24 +78,24 @@ class LoginActivity : AppCompatActivity(), TdlibController.Listener {
 
     // ---- shared building blocks ----
 
-    private fun newCard(): LinearLayout = LinearLayout(this).apply {
+    private fun newCard(): LinearLayout = LinearLayout(ctx).apply {
         orientation = LinearLayout.VERTICAL
         gravity = Gravity.CENTER_HORIZONTAL
         setBackgroundResource(R.drawable.card_bg)
-        val pad = dp(28)
+        val pad = ctx.dp(28)
         setPadding(pad, pad, pad, pad)
     }
 
     private fun LinearLayout.addChild(view: View, topMargin: Int = 0, matchWidth: Boolean = false, heightDp: Int? = null) {
         val w = if (matchWidth) LinearLayout.LayoutParams.MATCH_PARENT else LinearLayout.LayoutParams.WRAP_CONTENT
-        val h = heightDp?.let { dp(it) } ?: LinearLayout.LayoutParams.WRAP_CONTENT
+        val h = heightDp?.let { ctx.dp(it) } ?: LinearLayout.LayoutParams.WRAP_CONTENT
         val lp = LinearLayout.LayoutParams(w, h)
         lp.topMargin = topMargin
         if (!matchWidth) lp.gravity = Gravity.CENTER_HORIZONTAL
         addView(view, lp)
     }
 
-    private fun titleText(text: String): TextView = TextView(this).apply {
+    private fun titleText(text: String): TextView = TextView(ctx).apply {
         this.text = text
         setTextColor(ContextCompat.getColor(context, R.color.accent_gold))
         textSize = 20f
@@ -122,14 +103,14 @@ class LoginActivity : AppCompatActivity(), TdlibController.Listener {
         gravity = Gravity.CENTER
     }
 
-    private fun subtitleText(text: String): TextView = TextView(this).apply {
+    private fun subtitleText(text: String): TextView = TextView(ctx).apply {
         this.text = text
         setTextColor(ContextCompat.getColor(context, R.color.label_muted))
         textSize = 13f
         gravity = Gravity.CENTER
     }
 
-    private fun linkText(text: String): TextView = TextView(this).apply {
+    private fun linkText(text: String): TextView = TextView(ctx).apply {
         this.text = text
         setTextColor(ContextCompat.getColor(context, R.color.label_muted))
         textSize = 13f
@@ -138,20 +119,20 @@ class LoginActivity : AppCompatActivity(), TdlibController.Listener {
         isFocusable = true
     }
 
-    private fun errorText(): TextView = TextView(this).apply {
+    private fun errorText(): TextView = TextView(ctx).apply {
         setTextColor(ContextCompat.getColor(context, R.color.error_red))
         textSize = 12f
         visibility = View.GONE
     }
 
-    private fun inputField(hint: String, inputType: Int, centered: Boolean = false): EditText = EditText(this).apply {
+    private fun inputField(hint: String, inputType: Int, centered: Boolean = false): EditText = EditText(ctx).apply {
         this.hint = hint
         setHintTextColor(ContextCompat.getColor(context, R.color.label_muted))
         setTextColor(ContextCompat.getColor(context, R.color.text_title))
         this.inputType = inputType
         setBackgroundResource(R.drawable.input_bg)
-        val padH = dp(16)
-        val padV = dp(14)
+        val padH = ctx.dp(16)
+        val padV = ctx.dp(14)
         setPadding(padH, padV, padH, padV)
         if (centered) {
             gravity = Gravity.CENTER
@@ -159,7 +140,7 @@ class LoginActivity : AppCompatActivity(), TdlibController.Listener {
         }
     }
 
-    private fun primaryButton(text: String): Button = android.widget.Button(this).apply {
+    private fun primaryButton(text: String): Button = Button(ctx).apply {
         this.text = text
         isAllCaps = false
         setTextColor(Color.parseColor("#2A1B04"))
@@ -198,41 +179,41 @@ class LoginActivity : AppCompatActivity(), TdlibController.Listener {
 
     private fun showLoadingStep() = showStep("loading") {
         currentErrorView = null
-        LinearLayout(this).apply {
+        LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
             setBackgroundResource(R.drawable.card_bg)
-            val pad = dp(36)
+            val pad = ctx.dp(36)
             setPadding(pad, pad, pad, pad)
 
-            addChild(ProgressBar(this@LoginActivity).apply {
-                indeterminateTintList = android.content.res.ColorStateList.valueOf(
+            addChild(ProgressBar(ctx).apply {
+                indeterminateTintList = ColorStateList.valueOf(
                     ContextCompat.getColor(context, R.color.accent_gold)
                 )
             }, heightDp = 40)
 
-            addChild(TextView(this@LoginActivity).apply {
-                text = getString(R.string.login_loading)
+            addChild(TextView(ctx).apply {
+                text = ctx.getString(R.string.login_loading)
                 setTextColor(ContextCompat.getColor(context, R.color.text_title))
                 textSize = 15f
-            }, topMargin = dp(16))
+            }, topMargin = ctx.dp(16))
         }
     }
 
     private fun showPhoneStep() = showStep("phone") {
         val card = newCard()
-        card.addChild(titleText(getString(R.string.login_phone_title)))
-        card.addChild(subtitleText(getString(R.string.login_phone_subtitle)), topMargin = dp(6))
+        card.addChild(titleText(ctx.getString(R.string.login_phone_title)))
+        card.addChild(subtitleText(ctx.getString(R.string.login_phone_subtitle)), topMargin = ctx.dp(6))
 
-        val input = inputField(getString(R.string.login_phone_hint), InputType.TYPE_CLASS_PHONE)
-        card.addChild(input, topMargin = dp(22), matchWidth = true)
+        val input = inputField(ctx.getString(R.string.login_phone_hint), InputType.TYPE_CLASS_PHONE)
+        card.addChild(input, topMargin = ctx.dp(22), matchWidth = true)
 
         val error = errorText()
         currentErrorView = error
-        card.addChild(error, topMargin = dp(8), matchWidth = true)
+        card.addChild(error, topMargin = ctx.dp(8), matchWidth = true)
 
-        val button = primaryButton(getString(R.string.login_continue))
-        card.addChild(button, topMargin = dp(22), matchWidth = true, heightDp = 52)
+        val button = primaryButton(ctx.getString(R.string.login_continue))
+        card.addChild(button, topMargin = ctx.dp(22), matchWidth = true, heightDp = 52)
 
         button.setOnClickListener {
             val phone = input.text.toString().trim().replace(" ", "")
@@ -248,21 +229,21 @@ class LoginActivity : AppCompatActivity(), TdlibController.Listener {
 
     private fun showCodeStep() = showStep("code") {
         val card = newCard()
-        card.addChild(titleText(getString(R.string.login_code_title)))
-        card.addChild(subtitleText(getString(R.string.login_code_subtitle)), topMargin = dp(6))
+        card.addChild(titleText(ctx.getString(R.string.login_code_title)))
+        card.addChild(subtitleText(ctx.getString(R.string.login_code_subtitle)), topMargin = ctx.dp(6))
 
-        val input = inputField(getString(R.string.login_code_hint), InputType.TYPE_CLASS_NUMBER, centered = true)
-        card.addChild(input, topMargin = dp(22), matchWidth = true)
+        val input = inputField(ctx.getString(R.string.login_code_hint), InputType.TYPE_CLASS_NUMBER, centered = true)
+        card.addChild(input, topMargin = ctx.dp(22), matchWidth = true)
 
         val error = errorText()
         currentErrorView = error
-        card.addChild(error, topMargin = dp(8), matchWidth = true)
+        card.addChild(error, topMargin = ctx.dp(8), matchWidth = true)
 
-        val button = primaryButton(getString(R.string.login_continue))
-        card.addChild(button, topMargin = dp(22), matchWidth = true, heightDp = 52)
+        val button = primaryButton(ctx.getString(R.string.login_continue))
+        card.addChild(button, topMargin = ctx.dp(22), matchWidth = true, heightDp = 52)
 
-        val back = linkText(getString(R.string.login_code_back))
-        card.addChild(back, topMargin = dp(16))
+        val back = linkText(ctx.getString(R.string.login_code_back))
+        card.addChild(back, topMargin = ctx.dp(16))
 
         button.setOnClickListener {
             val code = input.text.toString().trim()
@@ -281,27 +262,27 @@ class LoginActivity : AppCompatActivity(), TdlibController.Listener {
 
     private fun showPasswordStep(state: TdApi.AuthorizationStateWaitPassword) = showStep("password") {
         val card = newCard()
-        card.addChild(titleText(getString(R.string.login_password_title)))
+        card.addChild(titleText(ctx.getString(R.string.login_password_title)))
         val hint = state.passwordHint
         val subtitleStr = if (!hint.isNullOrEmpty()) {
-            getString(R.string.login_password_subtitle) + " ($hint)"
+            ctx.getString(R.string.login_password_subtitle) + " ($hint)"
         } else {
-            getString(R.string.login_password_subtitle)
+            ctx.getString(R.string.login_password_subtitle)
         }
-        card.addChild(subtitleText(subtitleStr), topMargin = dp(6))
+        card.addChild(subtitleText(subtitleStr), topMargin = ctx.dp(6))
 
         val input = inputField(
-            getString(R.string.login_password_hint),
+            ctx.getString(R.string.login_password_hint),
             InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
         )
-        card.addChild(input, topMargin = dp(22), matchWidth = true)
+        card.addChild(input, topMargin = ctx.dp(22), matchWidth = true)
 
         val error = errorText()
         currentErrorView = error
-        card.addChild(error, topMargin = dp(8), matchWidth = true)
+        card.addChild(error, topMargin = ctx.dp(8), matchWidth = true)
 
-        val button = primaryButton(getString(R.string.login_continue))
-        card.addChild(button, topMargin = dp(22), matchWidth = true, heightDp = 52)
+        val button = primaryButton(ctx.getString(R.string.login_continue))
+        card.addChild(button, topMargin = ctx.dp(22), matchWidth = true, heightDp = 52)
 
         button.setOnClickListener {
             val password = input.text.toString()
@@ -316,21 +297,21 @@ class LoginActivity : AppCompatActivity(), TdlibController.Listener {
 
     private fun showEmailStep() = showStep("email") {
         val card = newCard()
-        card.addChild(titleText(getString(R.string.login_email_title)))
-        card.addChild(subtitleText(getString(R.string.login_email_subtitle)), topMargin = dp(6))
+        card.addChild(titleText(ctx.getString(R.string.login_email_title)))
+        card.addChild(subtitleText(ctx.getString(R.string.login_email_subtitle)), topMargin = ctx.dp(6))
 
         val input = inputField(
-            getString(R.string.login_email_hint),
+            ctx.getString(R.string.login_email_hint),
             InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS
         )
-        card.addChild(input, topMargin = dp(22), matchWidth = true)
+        card.addChild(input, topMargin = ctx.dp(22), matchWidth = true)
 
         val error = errorText()
         currentErrorView = error
-        card.addChild(error, topMargin = dp(8), matchWidth = true)
+        card.addChild(error, topMargin = ctx.dp(8), matchWidth = true)
 
-        val button = primaryButton(getString(R.string.login_continue))
-        card.addChild(button, topMargin = dp(22), matchWidth = true, heightDp = 52)
+        val button = primaryButton(ctx.getString(R.string.login_continue))
+        card.addChild(button, topMargin = ctx.dp(22), matchWidth = true, heightDp = 52)
 
         button.setOnClickListener {
             val email = input.text.toString().trim()
@@ -345,18 +326,18 @@ class LoginActivity : AppCompatActivity(), TdlibController.Listener {
 
     private fun showEmailCodeStep() = showStep("email_code") {
         val card = newCard()
-        card.addChild(titleText(getString(R.string.login_email_code_title)))
-        card.addChild(subtitleText(getString(R.string.login_email_code_subtitle)), topMargin = dp(6))
+        card.addChild(titleText(ctx.getString(R.string.login_email_code_title)))
+        card.addChild(subtitleText(ctx.getString(R.string.login_email_code_subtitle)), topMargin = ctx.dp(6))
 
-        val input = inputField(getString(R.string.login_email_code_hint), InputType.TYPE_CLASS_NUMBER, centered = true)
-        card.addChild(input, topMargin = dp(22), matchWidth = true)
+        val input = inputField(ctx.getString(R.string.login_email_code_hint), InputType.TYPE_CLASS_NUMBER, centered = true)
+        card.addChild(input, topMargin = ctx.dp(22), matchWidth = true)
 
         val error = errorText()
         currentErrorView = error
-        card.addChild(error, topMargin = dp(8), matchWidth = true)
+        card.addChild(error, topMargin = ctx.dp(8), matchWidth = true)
 
-        val button = primaryButton(getString(R.string.login_continue))
-        card.addChild(button, topMargin = dp(22), matchWidth = true, heightDp = 52)
+        val button = primaryButton(ctx.getString(R.string.login_continue))
+        card.addChild(button, topMargin = ctx.dp(22), matchWidth = true, heightDp = 52)
 
         button.setOnClickListener {
             val code = input.text.toString().trim()
@@ -371,27 +352,27 @@ class LoginActivity : AppCompatActivity(), TdlibController.Listener {
 
     private fun showRegistrationStep() = showStep("registration") {
         val card = newCard()
-        card.addChild(titleText(getString(R.string.login_registration_title)))
-        card.addChild(subtitleText(getString(R.string.login_registration_subtitle)), topMargin = dp(6))
+        card.addChild(titleText(ctx.getString(R.string.login_registration_title)))
+        card.addChild(subtitleText(ctx.getString(R.string.login_registration_subtitle)), topMargin = ctx.dp(6))
 
         val first = inputField(
-            getString(R.string.login_first_name_hint),
+            ctx.getString(R.string.login_first_name_hint),
             InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PERSON_NAME
         )
-        card.addChild(first, topMargin = dp(22), matchWidth = true)
+        card.addChild(first, topMargin = ctx.dp(22), matchWidth = true)
 
         val last = inputField(
-            getString(R.string.login_last_name_hint),
+            ctx.getString(R.string.login_last_name_hint),
             InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PERSON_NAME
         )
-        card.addChild(last, topMargin = dp(14), matchWidth = true)
+        card.addChild(last, topMargin = ctx.dp(14), matchWidth = true)
 
         val error = errorText()
         currentErrorView = error
-        card.addChild(error, topMargin = dp(8), matchWidth = true)
+        card.addChild(error, topMargin = ctx.dp(8), matchWidth = true)
 
-        val button = primaryButton(getString(R.string.login_continue))
-        card.addChild(button, topMargin = dp(22), matchWidth = true, heightDp = 52)
+        val button = primaryButton(ctx.getString(R.string.login_continue))
+        card.addChild(button, topMargin = ctx.dp(22), matchWidth = true, heightDp = 52)
 
         button.setOnClickListener {
             val f = first.text.toString().trim()

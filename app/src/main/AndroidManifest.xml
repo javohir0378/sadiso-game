@@ -11,7 +11,7 @@
         android:roundIcon="@mipmap/ic_launcher"
         android:theme="@style/Theme.VitaMahjong">
         <activity
-            android:name=".LoginActivity"
+            android:name=".LaunchActivity"
             android:exported="true"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
@@ -19,12 +19,6 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        <activity
-            android:name=".MainMenuActivity"
-            android:exported="false" />
-        <activity
-            android:name=".MahjongActivity"
-            android:exported="false" />
     </application>
 
 </manifest>
