@@ -2,15 +2,20 @@ package com.sadiso.game
 
 import android.content.Intent
 import android.graphics.Color
-import android.os.Bundle
-import android.view.LayoutInflater
+import android.graphics.Typeface
+import android.text.InputType
+import android.view.Gravity
 import android.view.View
 import android.view.animation.OvershootInterpolator
+import android.os.Bundle
 import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
+import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -24,6 +29,7 @@ class LoginActivity : AppCompatActivity(), TdlibController.Listener {
     private lateinit var controller: TdlibController
     private var currentStepTag: String? = null
     private var currentStepView: View? = null
+    private var currentErrorView: TextView? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -32,17 +38,33 @@ class LoginActivity : AppCompatActivity(), TdlibController.Listener {
         window.statusBarColor = Color.TRANSPARENT
         window.navigationBarColor = Color.TRANSPARENT
 
-        setContentView(R.layout.activity_login)
+        val root = FrameLayout(this).apply {
+            setBackgroundResource(R.drawable.bg_gradient)
+        }
+        root.addView(LoginBackdropView(this), FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
 
-        val loginRoot = findViewById<View>(R.id.loginRoot)
+        val loginRoot = FrameLayout(this)
+        root.addView(loginRoot, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+
+        stepContainer = FrameLayout(this).apply {
+            setPadding(dp(28), 0, dp(28), 0)
+        }
+        loginRoot.addView(
+            stepContainer,
+            FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT).apply {
+                gravity = Gravity.CENTER
+            }
+        )
+
+        setContentView(root)
+
         ViewCompat.setOnApplyWindowInsetsListener(loginRoot) { v, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             v.setPadding(bars.left, bars.top, bars.right, bars.bottom)
             insets
         }
 
-        stepContainer = findViewById(R.id.stepContainer)
-        showStep("loading", R.layout.step_loading) {}
+        showLoadingStep()
 
         controller = TdlibController(applicationContext)
         controller.listener = this
@@ -70,23 +92,88 @@ class LoginActivity : AppCompatActivity(), TdlibController.Listener {
     }
 
     override fun onError(context: String, error: TdApi.Error) {
-        val message = error.message ?: "Xatolik yuz berdi"
-        when (context) {
-            "sendPhoneNumber" -> showFieldError(R.id.phoneError, message)
-            "sendCode" -> showFieldError(R.id.codeError, message)
-            "sendPassword" -> showFieldError(R.id.passwordError, message)
-            "sendEmailAddress" -> showFieldError(R.id.emailError, message)
-            "sendEmailCode" -> showFieldError(R.id.emailCodeError, message)
-            "sendRegistration" -> showFieldError(R.id.registrationError, message)
+        showFieldError(error.message ?: "Xatolik yuz berdi")
+    }
+
+    // ---- shared building blocks ----
+
+    private fun newCard(): LinearLayout = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        gravity = Gravity.CENTER_HORIZONTAL
+        setBackgroundResource(R.drawable.card_bg)
+        val pad = dp(28)
+        setPadding(pad, pad, pad, pad)
+    }
+
+    private fun LinearLayout.addChild(view: View, topMargin: Int = 0, matchWidth: Boolean = false, heightDp: Int? = null) {
+        val w = if (matchWidth) LinearLayout.LayoutParams.MATCH_PARENT else LinearLayout.LayoutParams.WRAP_CONTENT
+        val h = heightDp?.let { dp(it) } ?: LinearLayout.LayoutParams.WRAP_CONTENT
+        val lp = LinearLayout.LayoutParams(w, h)
+        lp.topMargin = topMargin
+        if (!matchWidth) lp.gravity = Gravity.CENTER_HORIZONTAL
+        addView(view, lp)
+    }
+
+    private fun titleText(text: String): TextView = TextView(this).apply {
+        this.text = text
+        setTextColor(ContextCompat.getColor(context, R.color.accent_gold))
+        textSize = 20f
+        setTypeface(typeface, Typeface.BOLD)
+        gravity = Gravity.CENTER
+    }
+
+    private fun subtitleText(text: String): TextView = TextView(this).apply {
+        this.text = text
+        setTextColor(ContextCompat.getColor(context, R.color.label_muted))
+        textSize = 13f
+        gravity = Gravity.CENTER
+    }
+
+    private fun linkText(text: String): TextView = TextView(this).apply {
+        this.text = text
+        setTextColor(ContextCompat.getColor(context, R.color.label_muted))
+        textSize = 13f
+        gravity = Gravity.CENTER
+        isClickable = true
+        isFocusable = true
+    }
+
+    private fun errorText(): TextView = TextView(this).apply {
+        setTextColor(ContextCompat.getColor(context, R.color.error_red))
+        textSize = 12f
+        visibility = View.GONE
+    }
+
+    private fun inputField(hint: String, inputType: Int, centered: Boolean = false): EditText = EditText(this).apply {
+        this.hint = hint
+        setHintTextColor(ContextCompat.getColor(context, R.color.label_muted))
+        setTextColor(ContextCompat.getColor(context, R.color.text_title))
+        this.inputType = inputType
+        setBackgroundResource(R.drawable.input_bg)
+        val padH = dp(16)
+        val padV = dp(14)
+        setPadding(padH, padV, padH, padV)
+        if (centered) {
+            gravity = Gravity.CENTER
+            letterSpacing = 0.3f
         }
     }
 
-    private fun showFieldError(errorId: Int, message: String) {
-        val stepView = currentStepView ?: return
-        val errorView = stepView.findViewById<TextView>(errorId) ?: return
-        errorView.text = message
-        errorView.visibility = View.VISIBLE
-        shake(stepView)
+    private fun primaryButton(text: String): Button = android.widget.Button(this).apply {
+        this.text = text
+        isAllCaps = false
+        setTextColor(Color.parseColor("#2A1B04"))
+        setTypeface(typeface, Typeface.BOLD)
+        setBackgroundResource(R.drawable.primary_button_bg)
+    }
+
+    // ---- error / shake ----
+
+    private fun showFieldError(message: String) {
+        val err = currentErrorView ?: return
+        err.text = message
+        err.visibility = View.VISIBLE
+        currentStepView?.let { shake(it) }
     }
 
     private fun shake(view: View) {
@@ -107,105 +194,232 @@ class LoginActivity : AppCompatActivity(), TdlibController.Listener {
         view.post(runnable)
     }
 
-    private fun showLoadingStep() = showStep("loading", R.layout.step_loading) {}
+    // ---- steps ----
 
-    private fun showPhoneStep() = showStep("phone", R.layout.step_phone) { v ->
-        val input = v.findViewById<EditText>(R.id.phoneInput)
-        v.findViewById<Button>(R.id.phoneSubmit).setOnClickListener {
+    private fun showLoadingStep() = showStep("loading") {
+        currentErrorView = null
+        LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setBackgroundResource(R.drawable.card_bg)
+            val pad = dp(36)
+            setPadding(pad, pad, pad, pad)
+
+            addChild(ProgressBar(this@LoginActivity).apply {
+                indeterminateTintList = android.content.res.ColorStateList.valueOf(
+                    ContextCompat.getColor(context, R.color.accent_gold)
+                )
+            }, heightDp = 40)
+
+            addChild(TextView(this@LoginActivity).apply {
+                text = getString(R.string.login_loading)
+                setTextColor(ContextCompat.getColor(context, R.color.text_title))
+                textSize = 15f
+            }, topMargin = dp(16))
+        }
+    }
+
+    private fun showPhoneStep() = showStep("phone") {
+        val card = newCard()
+        card.addChild(titleText(getString(R.string.login_phone_title)))
+        card.addChild(subtitleText(getString(R.string.login_phone_subtitle)), topMargin = dp(6))
+
+        val input = inputField(getString(R.string.login_phone_hint), InputType.TYPE_CLASS_PHONE)
+        card.addChild(input, topMargin = dp(22), matchWidth = true)
+
+        val error = errorText()
+        currentErrorView = error
+        card.addChild(error, topMargin = dp(8), matchWidth = true)
+
+        val button = primaryButton(getString(R.string.login_continue))
+        card.addChild(button, topMargin = dp(22), matchWidth = true, heightDp = 52)
+
+        button.setOnClickListener {
             val phone = input.text.toString().trim().replace(" ", "")
             if (phone.length < 6) {
-                showFieldError(R.id.phoneError, "Raqamni to'liq kiriting")
+                showFieldError("Raqamni to'liq kiriting")
                 return@setOnClickListener
             }
             controller.sendPhoneNumber(phone)
             showLoadingStep()
         }
+        card
     }
 
-    private fun showCodeStep() = showStep("code", R.layout.step_code) { v ->
-        val input = v.findViewById<EditText>(R.id.codeInput)
-        v.findViewById<Button>(R.id.codeSubmit).setOnClickListener {
+    private fun showCodeStep() = showStep("code") {
+        val card = newCard()
+        card.addChild(titleText(getString(R.string.login_code_title)))
+        card.addChild(subtitleText(getString(R.string.login_code_subtitle)), topMargin = dp(6))
+
+        val input = inputField(getString(R.string.login_code_hint), InputType.TYPE_CLASS_NUMBER, centered = true)
+        card.addChild(input, topMargin = dp(22), matchWidth = true)
+
+        val error = errorText()
+        currentErrorView = error
+        card.addChild(error, topMargin = dp(8), matchWidth = true)
+
+        val button = primaryButton(getString(R.string.login_continue))
+        card.addChild(button, topMargin = dp(22), matchWidth = true, heightDp = 52)
+
+        val back = linkText(getString(R.string.login_code_back))
+        card.addChild(back, topMargin = dp(16))
+
+        button.setOnClickListener {
             val code = input.text.toString().trim()
             if (code.isEmpty()) {
-                showFieldError(R.id.codeError, "Kodni kiriting")
+                showFieldError("Kodni kiriting")
                 return@setOnClickListener
             }
             controller.sendCode(code)
         }
-        v.findViewById<TextView>(R.id.codeBack).setOnClickListener {
+        back.setOnClickListener {
             controller.logOut()
             showPhoneStep()
         }
+        card
     }
 
-    private fun showPasswordStep(state: TdApi.AuthorizationStateWaitPassword) =
-        showStep("password", R.layout.step_password) { v ->
-            val hint = state.passwordHint
-            if (!hint.isNullOrEmpty()) {
-                v.findViewById<TextView>(R.id.passwordSubtitle).text =
-                    getString(R.string.login_password_subtitle) + " ($hint)"
-            }
-            val input = v.findViewById<EditText>(R.id.passwordInput)
-            v.findViewById<Button>(R.id.passwordSubmit).setOnClickListener {
-                val password = input.text.toString()
-                if (password.isEmpty()) {
-                    showFieldError(R.id.passwordError, "Parolni kiriting")
-                    return@setOnClickListener
-                }
-                controller.sendPassword(password)
-            }
+    private fun showPasswordStep(state: TdApi.AuthorizationStateWaitPassword) = showStep("password") {
+        val card = newCard()
+        card.addChild(titleText(getString(R.string.login_password_title)))
+        val hint = state.passwordHint
+        val subtitleStr = if (!hint.isNullOrEmpty()) {
+            getString(R.string.login_password_subtitle) + " ($hint)"
+        } else {
+            getString(R.string.login_password_subtitle)
         }
+        card.addChild(subtitleText(subtitleStr), topMargin = dp(6))
 
-    private fun showEmailStep() = showStep("email", R.layout.step_email) { v ->
-        val input = v.findViewById<EditText>(R.id.emailInput)
-        v.findViewById<Button>(R.id.emailSubmit).setOnClickListener {
+        val input = inputField(
+            getString(R.string.login_password_hint),
+            InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+        )
+        card.addChild(input, topMargin = dp(22), matchWidth = true)
+
+        val error = errorText()
+        currentErrorView = error
+        card.addChild(error, topMargin = dp(8), matchWidth = true)
+
+        val button = primaryButton(getString(R.string.login_continue))
+        card.addChild(button, topMargin = dp(22), matchWidth = true, heightDp = 52)
+
+        button.setOnClickListener {
+            val password = input.text.toString()
+            if (password.isEmpty()) {
+                showFieldError("Parolni kiriting")
+                return@setOnClickListener
+            }
+            controller.sendPassword(password)
+        }
+        card
+    }
+
+    private fun showEmailStep() = showStep("email") {
+        val card = newCard()
+        card.addChild(titleText(getString(R.string.login_email_title)))
+        card.addChild(subtitleText(getString(R.string.login_email_subtitle)), topMargin = dp(6))
+
+        val input = inputField(
+            getString(R.string.login_email_hint),
+            InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS
+        )
+        card.addChild(input, topMargin = dp(22), matchWidth = true)
+
+        val error = errorText()
+        currentErrorView = error
+        card.addChild(error, topMargin = dp(8), matchWidth = true)
+
+        val button = primaryButton(getString(R.string.login_continue))
+        card.addChild(button, topMargin = dp(22), matchWidth = true, heightDp = 52)
+
+        button.setOnClickListener {
             val email = input.text.toString().trim()
             if (!email.contains("@")) {
-                showFieldError(R.id.emailError, "To'g'ri email kiriting")
+                showFieldError("To'g'ri email kiriting")
                 return@setOnClickListener
             }
             controller.sendEmailAddress(email)
         }
+        card
     }
 
-    private fun showEmailCodeStep() = showStep("email_code", R.layout.step_email_code) { v ->
-        val input = v.findViewById<EditText>(R.id.emailCodeInput)
-        v.findViewById<Button>(R.id.emailCodeSubmit).setOnClickListener {
+    private fun showEmailCodeStep() = showStep("email_code") {
+        val card = newCard()
+        card.addChild(titleText(getString(R.string.login_email_code_title)))
+        card.addChild(subtitleText(getString(R.string.login_email_code_subtitle)), topMargin = dp(6))
+
+        val input = inputField(getString(R.string.login_email_code_hint), InputType.TYPE_CLASS_NUMBER, centered = true)
+        card.addChild(input, topMargin = dp(22), matchWidth = true)
+
+        val error = errorText()
+        currentErrorView = error
+        card.addChild(error, topMargin = dp(8), matchWidth = true)
+
+        val button = primaryButton(getString(R.string.login_continue))
+        card.addChild(button, topMargin = dp(22), matchWidth = true, heightDp = 52)
+
+        button.setOnClickListener {
             val code = input.text.toString().trim()
             if (code.isEmpty()) {
-                showFieldError(R.id.emailCodeError, "Kodni kiriting")
+                showFieldError("Kodni kiriting")
                 return@setOnClickListener
             }
             controller.sendEmailCode(code)
         }
+        card
     }
 
-    private fun showRegistrationStep() = showStep("registration", R.layout.step_registration) { v ->
-        val first = v.findViewById<EditText>(R.id.firstNameInput)
-        val last = v.findViewById<EditText>(R.id.lastNameInput)
-        v.findViewById<Button>(R.id.registrationSubmit).setOnClickListener {
+    private fun showRegistrationStep() = showStep("registration") {
+        val card = newCard()
+        card.addChild(titleText(getString(R.string.login_registration_title)))
+        card.addChild(subtitleText(getString(R.string.login_registration_subtitle)), topMargin = dp(6))
+
+        val first = inputField(
+            getString(R.string.login_first_name_hint),
+            InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PERSON_NAME
+        )
+        card.addChild(first, topMargin = dp(22), matchWidth = true)
+
+        val last = inputField(
+            getString(R.string.login_last_name_hint),
+            InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PERSON_NAME
+        )
+        card.addChild(last, topMargin = dp(14), matchWidth = true)
+
+        val error = errorText()
+        currentErrorView = error
+        card.addChild(error, topMargin = dp(8), matchWidth = true)
+
+        val button = primaryButton(getString(R.string.login_continue))
+        card.addChild(button, topMargin = dp(22), matchWidth = true, heightDp = 52)
+
+        button.setOnClickListener {
             val f = first.text.toString().trim()
             if (f.isEmpty()) {
-                showFieldError(R.id.registrationError, "Ismingizni kiriting")
+                showFieldError("Ismingizni kiriting")
                 return@setOnClickListener
             }
             controller.sendRegistration(f, last.text.toString().trim())
         }
+        card
     }
 
-    private fun showStep(tag: String, layoutRes: Int, bind: (View) -> Unit) {
+    // ---- transition ----
+
+    private fun showStep(tag: String, builder: () -> View) {
         if (currentStepTag == tag) return
         currentStepTag = tag
 
-        val newView = LayoutInflater.from(this).inflate(layoutRes, stepContainer, false)
-        bind(newView)
-
+        val newView = builder()
         val oldView = currentStepView
         currentStepView = newView
 
         newView.alpha = 0f
         newView.translationX = 60f
-        stepContainer.addView(newView)
+        stepContainer.addView(
+            newView,
+            FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT)
+        )
 
         newView.animate()
             .alpha(1f)

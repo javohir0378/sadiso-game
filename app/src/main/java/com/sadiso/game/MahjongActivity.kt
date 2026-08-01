@@ -2,11 +2,17 @@ package com.sadiso.game
 
 import android.app.AlertDialog
 import android.graphics.Color
+import android.graphics.Typeface
 import android.os.Bundle
 import android.text.SpannableString
 import android.text.style.ForegroundColorSpan
+import android.view.Gravity
 import android.view.View
+import android.widget.FrameLayout
 import android.widget.ImageButton
+import android.widget.ImageView
+import android.widget.LinearLayout
+import android.widget.RelativeLayout
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
@@ -25,22 +31,89 @@ class MahjongActivity : AppCompatActivity(), MahjongBoardView.Listener {
         window.statusBarColor = Color.TRANSPARENT
         window.navigationBarColor = Color.TRANSPARENT
 
-        setContentView(R.layout.activity_main)
+        val root = FrameLayout(this).apply {
+            setBackgroundResource(R.drawable.bg_gradient)
+        }
 
-        val contentRoot = findViewById<View>(R.id.contentRoot)
+        val contentRoot = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+        root.addView(contentRoot, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+
+        val topBar = RelativeLayout(this).apply {
+            setPadding(dp(18), dp(14), dp(18), dp(6))
+        }
+        contentRoot.addView(topBar, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+
+        val newGameButton = ImageButton(this).apply {
+            setBackgroundResource(R.drawable.circle_button_bg)
+            setImageResource(R.drawable.ic_new_game)
+            contentDescription = getString(R.string.new_game)
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            setPadding(dp(13), dp(13), dp(13), dp(13))
+        }
+        topBar.addView(
+            newGameButton,
+            RelativeLayout.LayoutParams(dp(52), dp(52)).apply {
+                addRule(RelativeLayout.ALIGN_PARENT_START)
+                addRule(RelativeLayout.CENTER_VERTICAL)
+            }
+        )
+
+        statusText = TextView(this).apply {
+            text = "0"
+            textSize = 16f
+            setTypeface(typeface, Typeface.BOLD)
+        }
+        topBar.addView(
+            statusText,
+            RelativeLayout.LayoutParams(RelativeLayout.LayoutParams.WRAP_CONTENT, RelativeLayout.LayoutParams.WRAP_CONTENT).apply {
+                addRule(RelativeLayout.CENTER_IN_PARENT)
+            }
+        )
+
+        board = MahjongBoardView(this)
+        contentRoot.addView(board, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
+
+        val bottomBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            setPadding(0, dp(10), 0, dp(22))
+        }
+        contentRoot.addView(bottomBar, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+
+        val shuffleButton = ImageButton(this).apply {
+            setBackgroundResource(R.drawable.circle_button_bg)
+            setImageResource(R.drawable.ic_shuffle)
+            contentDescription = getString(R.string.shuffle)
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            setPadding(dp(15), dp(15), dp(15), dp(15))
+        }
+        bottomBar.addView(shuffleButton, LinearLayout.LayoutParams(dp(56), dp(56)))
+
+        bottomBar.addView(View(this), LinearLayout.LayoutParams(dp(44), dp(1)))
+
+        val undoButton = ImageButton(this).apply {
+            setBackgroundResource(R.drawable.circle_button_bg)
+            setImageResource(R.drawable.ic_undo)
+            contentDescription = getString(R.string.undo)
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            setPadding(dp(15), dp(15), dp(15), dp(15))
+        }
+        bottomBar.addView(undoButton, LinearLayout.LayoutParams(dp(56), dp(56)))
+
+        setContentView(root)
+
         ViewCompat.setOnApplyWindowInsetsListener(contentRoot) { v, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             v.setPadding(bars.left, bars.top, bars.right, bars.bottom)
             insets
         }
 
-        board = findViewById(R.id.board)
-        statusText = findViewById(R.id.statusText)
         board.listener = this
-
-        findViewById<ImageButton>(R.id.newGameButton).setOnClickListener { board.newGame() }
-        findViewById<ImageButton>(R.id.shuffleButton).setOnClickListener { board.shuffleRemaining() }
-        findViewById<ImageButton>(R.id.undoButton).setOnClickListener { board.undo() }
+        newGameButton.setOnClickListener { board.newGame() }
+        shuffleButton.setOnClickListener { board.shuffleRemaining() }
+        undoButton.setOnClickListener { board.undo() }
 
         onMovesChanged(0)
     }
