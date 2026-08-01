@@ -1,0 +1,44 @@
+name: Build TDLib for Android
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit_hash:
+        description: "TDLib commit/tag to build (default: latest master)"
+        required: false
+        default: master
+      tdlib_interface:
+        description: "Interface: Java, JSON, or JSONJava"
+        required: false
+        default: Java
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          sudo docker image prune -af
+
+      - name: Clone TDLib
+        run: git clone https://github.com/tdlib/td.git
+
+      - name: Build TDLib for Android (Docker)
+        working-directory: td/example/android
+        run: |
+          docker build \
+            --build-arg COMMIT_HASH="${{ inputs.commit_hash }}" \
+            --build-arg TDLIB_INTERFACE="${{ inputs.tdlib_interface }}" \
+            --output tdlib .
+
+      - name: Show output
+        working-directory: td/example/android
+        run: find tdlib -maxdepth 2 -exec ls -la {} \;
+
+      - name: Upload TDLib Android build
+        uses: actions/upload-artifact@v4
+        with:
+          name: tdlib-android
+          path: td/example/android/tdlib/**
