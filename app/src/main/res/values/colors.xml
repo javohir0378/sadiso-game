@@ -9,7 +9,13 @@
     <color name="bg_sheen_end">#00FFE4A6</color>
     <color name="accent_gold">#FFC107</color>
     <color name="circle_button_fill">#5D4037</color>
-    <color name="circle_button_border">#8D6E63</color>
+    <color name="circle_button_fill_light">#8A5A34</color>
+    <color name="circle_button_fill_dark">#3E2814</color>
+    <color name="circle_button_border">#D9A75C</color>
+    <color name="icon_cream">#F5EAD3</color>
     <color name="pill_bg">#33000000</color>
     <color name="label_muted">#CFC7B0</color>
+    <color name="tray_wood_light">#7A5027</color>
+    <color name="tray_wood_dark">#432B14</color>
+    <color name="tray_wood_border">#C99A54</color>
 </resources>

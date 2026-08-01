@@ -3,6 +3,8 @@ package com.sadiso.game
 import android.app.AlertDialog
 import android.graphics.Color
 import android.os.Bundle
+import android.text.SpannableString
+import android.text.style.ForegroundColorSpan
 import android.view.View
 import android.widget.ImageButton
 import android.widget.TextView
@@ -44,7 +46,20 @@ class MainActivity : AppCompatActivity(), MahjongBoardView.Listener {
     }
 
     override fun onMovesChanged(moves: Int) {
-        statusText.text = "Urinishlar: $moves"
+        val label = "Urinish: "
+        val text = "$label$moves"
+        val spannable = SpannableString(text)
+        spannable.setSpan(
+            ForegroundColorSpan(Color.parseColor("#FFC107")),
+            0, label.length,
+            SpannableString.SPAN_EXCLUSIVE_EXCLUSIVE
+        )
+        spannable.setSpan(
+            ForegroundColorSpan(Color.parseColor("#F5EAD3")),
+            label.length, text.length,
+            SpannableString.SPAN_EXCLUSIVE_EXCLUSIVE
+        )
+        statusText.text = spannable
     }
 
     override fun onWin(moves: Int) {

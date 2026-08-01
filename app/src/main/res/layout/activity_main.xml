@@ -10,39 +10,35 @@
         android:layout_height="match_parent"
         android:orientation="vertical">
 
-        <LinearLayout
+        <RelativeLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:paddingStart="20dp"
-            android:paddingEnd="20dp"
-            android:paddingTop="16dp"
-            android:paddingBottom="8dp">
+            android:paddingStart="18dp"
+            android:paddingEnd="18dp"
+            android:paddingTop="14dp"
+            android:paddingBottom="6dp">
 
-            <TextView
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="@string/app_name"
-                android:textColor="#F5EEDC"
-                android:textSize="22sp"
-                android:textStyle="bold" />
+            <ImageButton
+                android:id="@+id/newGameButton"
+                android:layout_width="52dp"
+                android:layout_height="52dp"
+                android:layout_alignParentStart="true"
+                android:layout_centerVertical="true"
+                android:background="@drawable/circle_button_bg"
+                android:src="@drawable/ic_new_game"
+                android:contentDescription="@string/new_game"
+                android:scaleType="centerInside"
+                android:padding="13dp" />
 
             <TextView
                 android:id="@+id/statusText"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:background="@drawable/pill_bg"
-                android:paddingStart="14dp"
-                android:paddingEnd="14dp"
-                android:paddingTop="6dp"
-                android:paddingBottom="6dp"
+                android:layout_centerInParent="true"
                 android:text="0"
-                android:textColor="@color/accent_gold"
-                android:textSize="14sp"
+                android:textSize="16sp"
                 android:textStyle="bold" />
-        </LinearLayout>
+        </RelativeLayout>
 
         <com.sadiso.game.MahjongBoardView
             android:id="@+id/board"
@@ -55,91 +51,32 @@
             android:layout_height="wrap_content"
             android:orientation="horizontal"
             android:gravity="center"
-            android:paddingTop="12dp"
-            android:paddingBottom="20dp">
+            android:paddingTop="10dp"
+            android:paddingBottom="22dp">
 
-            <LinearLayout
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:gravity="center">
-
-                <ImageButton
-                    android:id="@+id/newGameButton"
-                    android:layout_width="60dp"
-                    android:layout_height="60dp"
-                    android:background="@drawable/circle_button_bg"
-                    android:src="@drawable/ic_new_game"
-                    android:contentDescription="@string/new_game"
-                    android:scaleType="centerInside"
-                    android:padding="16dp" />
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
-                    android:text="@string/new_game"
-                    android:textColor="@color/label_muted"
-                    android:textSize="11sp" />
-            </LinearLayout>
+            <ImageButton
+                android:id="@+id/shuffleButton"
+                android:layout_width="56dp"
+                android:layout_height="56dp"
+                android:background="@drawable/circle_button_bg"
+                android:src="@drawable/ic_shuffle"
+                android:contentDescription="@string/shuffle"
+                android:scaleType="centerInside"
+                android:padding="15dp" />
 
             <View
-                android:layout_width="36dp"
+                android:layout_width="44dp"
                 android:layout_height="1dp" />
 
-            <LinearLayout
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:gravity="center">
-
-                <ImageButton
-                    android:id="@+id/shuffleButton"
-                    android:layout_width="60dp"
-                    android:layout_height="60dp"
-                    android:background="@drawable/circle_button_bg"
-                    android:src="@drawable/ic_shuffle"
-                    android:contentDescription="@string/shuffle"
-                    android:scaleType="centerInside"
-                    android:padding="16dp" />
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
-                    android:text="@string/shuffle"
-                    android:textColor="@color/label_muted"
-                    android:textSize="11sp" />
-            </LinearLayout>
-
-            <View
-                android:layout_width="36dp"
-                android:layout_height="1dp" />
-
-            <LinearLayout
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:gravity="center">
-
-                <ImageButton
-                    android:id="@+id/undoButton"
-                    android:layout_width="60dp"
-                    android:layout_height="60dp"
-                    android:background="@drawable/circle_button_bg"
-                    android:src="@drawable/ic_undo"
-                    android:contentDescription="@string/undo"
-                    android:scaleType="centerInside"
-                    android:padding="16dp" />
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
-                    android:text="@string/undo"
-                    android:textColor="@color/label_muted"
-                    android:textSize="11sp" />
-            </LinearLayout>
+            <ImageButton
+                android:id="@+id/undoButton"
+                android:layout_width="56dp"
+                android:layout_height="56dp"
+                android:background="@drawable/circle_button_bg"
+                android:src="@drawable/ic_undo"
+                android:contentDescription="@string/undo"
+                android:scaleType="centerInside"
+                android:padding="15dp" />
 
         </LinearLayout>
 

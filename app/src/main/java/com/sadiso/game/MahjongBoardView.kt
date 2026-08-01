@@ -25,7 +25,7 @@ class MahjongBoardView @JvmOverloads constructor(
 
     companion object {
         private const val TRAY_SIZE = 4
-        private const val FLY_DURATION_MS = 440L
+        private const val FLY_DURATION_MS = 260L
         private const val GROW_DURATION_MS = 340L
         private const val SHAKE_DURATION_MS = 420L
         private const val SHUFFLE_DURATION_MS = 950L
@@ -117,7 +117,7 @@ class MahjongBoardView @JvmOverloads constructor(
 
     private var tiles: MutableList<Tile> = generateBoard()
     private val traySlots = arrayOfNulls<Tile>(TRAY_SIZE)
-    private var flying: FlyingTile? = null
+    private val flyingTiles = mutableListOf<FlyingTile>()
     private var undoFlight: UndoFlight? = null
     private val growingSlots = mutableListOf<GrowingSlot>()
     private var matchBurst: MatchBurst? = null
@@ -184,7 +184,6 @@ class MahjongBoardView @JvmOverloads constructor(
         style = Paint.Style.STROKE
         color = Color.parseColor("#FFD54F")
     }
-    private val vignettePaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val ambientParticlePaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val traySlotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.argb(160, 74, 20, 140)
@@ -193,6 +192,11 @@ class MahjongBoardView @JvmOverloads constructor(
     private val traySlotBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         color = Color.parseColor("#FFC107")
+    }
+    private val trayDividerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        color = Color.argb(90, 0, 0, 0)
+        strokeCap = Paint.Cap.ROUND
     }
     private val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.parseColor("#FFF6D6")
@@ -217,7 +221,7 @@ class MahjongBoardView @JvmOverloads constructor(
     }
 
     private fun isAnimating() =
-        flying != null || undoFlight != null || shuffleAnims.isNotEmpty()
+        flyingTiles.isNotEmpty() || undoFlight != null || shuffleAnims.isNotEmpty()
 
     fun newGame() {
         tiles = generateBoard()
@@ -227,7 +231,7 @@ class MahjongBoardView @JvmOverloads constructor(
         comboPopup = null
         comboCount = 0
         lastMatchTime = 0L
-        flying = null
+        flyingTiles.clear()
         undoFlight = null
         rejectShake = null
         shuffleAnims = emptyList()
@@ -618,13 +622,6 @@ class MahjongBoardView @JvmOverloads constructor(
         val w = width.toFloat()
         val h = height.toFloat()
 
-        vignettePaint.shader = RadialGradient(
-            w / 2f, h * 0.4f, maxOf(w, h) * 0.78f,
-            Color.argb(0, 0, 0, 0), Color.argb(85, 0, 0, 0),
-            Shader.TileMode.CLAMP
-        )
-        canvas.drawRect(0f, 0f, w, h, vignettePaint)
-
         for (p in ambientParticles) {
             val t = now * p.speed + p.phase
             val dx = sin(t) * w * 0.03f
@@ -644,12 +641,34 @@ class MahjongBoardView @JvmOverloads constructor(
     }
 
     private fun drawTray(canvas: Canvas) {
-        val radius = unit * 0.22f
-        traySlotBorderPaint.strokeWidth = unit * 0.1f
-        for (i in 0 until TRAY_SIZE) {
+        val radius = unit * 0.3f
+        val first = traySlotRect(0)
+        val last = traySlotRect(TRAY_SIZE - 1)
+        val padX = traySlotGap * 0.9f
+        val padY = traySlotGap * 0.7f
+        val band = RectF(first.left - padX, first.top - padY, last.right + padX, first.bottom + padY)
+
+        val shadowRect = RectF(band)
+        shadowRect.offset(unit * 0.05f, unit * 0.09f)
+        shadowPaint.color = Color.argb(70, 0, 0, 0)
+        canvas.drawRoundRect(shadowRect, radius, radius, shadowPaint)
+
+        traySlotPaint.shader = LinearGradient(
+            band.left, band.top, band.left, band.bottom,
+            Color.parseColor("#7A5027"), Color.parseColor("#432B14"),
+            Shader.TileMode.CLAMP
+        )
+        canvas.drawRoundRect(band, radius, radius, traySlotPaint)
+
+        traySlotBorderPaint.strokeWidth = unit * 0.05f
+        traySlotBorderPaint.color = Color.parseColor("#C99A54")
+        canvas.drawRoundRect(band, radius, radius, traySlotBorderPaint)
+
+        trayDividerPaint.strokeWidth = unit * 0.025f
+        for (i in 1 until TRAY_SIZE) {
             val r = traySlotRect(i)
-            canvas.drawRoundRect(r, radius, radius, traySlotPaint)
-            canvas.drawRoundRect(r, radius, radius, traySlotBorderPaint)
+            val x = r.left - traySlotGap / 2f
+            canvas.drawLine(x, band.top + band.height() * 0.14f, x, band.bottom - band.height() * 0.14f, trayDividerPaint)
         }
     }
 
@@ -882,16 +901,18 @@ class MahjongBoardView @JvmOverloads constructor(
             }
         }
 
-        val fly = flying
-        if (fly != null) {
-            val raw = ((now - fly.startTime).toFloat() / FLY_DURATION_MS).coerceIn(0f, 1f)
-            val t = easeInOutCubic(raw)
-            val rect = lerpRect(fly.from, fly.to, t)
-            drawTile(canvas, rect, fly.tile.symbol, highlight = true, alpha = 255)
-            if (raw >= 1f) {
-                finishFlight(fly)
-            } else {
-                needsMoreFrames = true
+        if (flyingTiles.isNotEmpty()) {
+            val landed = mutableListOf<FlyingTile>()
+            for (fly in flyingTiles) {
+                val raw = ((now - fly.startTime).toFloat() / FLY_DURATION_MS).coerceIn(0f, 1f)
+                val t = easeOutCubic(raw)
+                val rect = lerpRect(fly.from, fly.to, t)
+                drawTile(canvas, rect, fly.tile.symbol, highlight = true, alpha = 255)
+                if (raw >= 1f) landed.add(fly) else needsMoreFrames = true
+            }
+            if (landed.isNotEmpty()) {
+                flyingTiles.removeAll(landed)
+                landed.forEach { finishFlight(it) }
             }
         }
 
@@ -914,7 +935,6 @@ class MahjongBoardView @JvmOverloads constructor(
     }
 
     private fun finishFlight(fly: FlyingTile) {
-        flying = null
         traySlots[fly.slotIndex] = fly.tile
 
         val pairIndex = traySlots.indices.firstOrNull { i ->
@@ -977,7 +997,7 @@ class MahjongBoardView @JvmOverloads constructor(
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (event.action != MotionEvent.ACTION_DOWN) return true
-        if (isAnimating()) return true
+        if (undoFlight != null || shuffleAnims.isNotEmpty()) return true
 
         val px = event.x
         val py = event.y
@@ -991,11 +1011,13 @@ class MahjongBoardView @JvmOverloads constructor(
             return true
         }
 
-        val emptyIndex = traySlots.indexOfFirst { it == null }
-        if (emptyIndex == -1) return true
+        val mb = matchBurst
+        val reserved = flyingTiles.map { it.slotIndex }.toSet() +
+            (if (mb != null) setOf(mb.slotA, mb.slotB) else emptySet())
+        val emptyIndex = traySlots.indices.firstOrNull { traySlots[it] == null && it !in reserved } ?: return true
 
         tiles.remove(hit)
-        flying = FlyingTile(hit, rectFor(hit), traySlotRect(emptyIndex), emptyIndex, System.currentTimeMillis())
+        flyingTiles.add(FlyingTile(hit, rectFor(hit), traySlotRect(emptyIndex), emptyIndex, System.currentTimeMillis()))
         invalidate()
         return true
     }
