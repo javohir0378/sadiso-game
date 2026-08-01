@@ -1,6 +1,7 @@
 package com.sadiso.game
 
 import android.app.AlertDialog
+import android.content.Intent
 import android.graphics.Color
 import android.graphics.Typeface
 import android.os.Bundle
@@ -72,6 +73,21 @@ class MahjongActivity : AppCompatActivity(), MahjongBoardView.Listener {
             }
         )
 
+        val menuButton = ImageButton(this).apply {
+            setBackgroundResource(R.drawable.circle_button_bg)
+            setImageResource(R.drawable.ic_home)
+            contentDescription = getString(R.string.main_menu)
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            setPadding(dp(13), dp(13), dp(13), dp(13))
+        }
+        topBar.addView(
+            menuButton,
+            RelativeLayout.LayoutParams(dp(52), dp(52)).apply {
+                addRule(RelativeLayout.ALIGN_PARENT_END)
+                addRule(RelativeLayout.CENTER_VERTICAL)
+            }
+        )
+
         board = MahjongBoardView(this)
         contentRoot.addView(board, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
 
@@ -114,6 +130,10 @@ class MahjongActivity : AppCompatActivity(), MahjongBoardView.Listener {
         newGameButton.setOnClickListener { board.newGame() }
         shuffleButton.setOnClickListener { board.shuffleRemaining() }
         undoButton.setOnClickListener { board.undo() }
+        menuButton.setOnClickListener {
+            startActivity(Intent(this, MainMenuActivity::class.java))
+            finish()
+        }
 
         onMovesChanged(0)
     }

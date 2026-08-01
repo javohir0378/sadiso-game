@@ -7,6 +7,29 @@ data class Tile(
     val symbol: String
 )
 
+private data class BoardTemplate(
+    val layerSizes: List<Pair<Int, Int>>,
+    val cornerCuts: List<Int>
+)
+
+// Each template's layer sizes must shrink by exactly 2 (in both cols and
+// rows) from one layer to the next, and each layer's corner cut must
+// satisfy 2*cut < min(cols, rows) - that's what keeps the "layer inset"
+// invariant below true regardless of which template is picked, so every
+// shape is provably playable, not just the original cross.
+private val boardTemplates = listOf(
+    // Xoch (cross) - the original shape.
+    BoardTemplate(listOf(6 to 6, 4 to 4, 2 to 2), listOf(2, 1, 0)),
+    // Piramida - deeper, octagon-ish silhouette.
+    BoardTemplate(listOf(8 to 8, 6 to 6, 4 to 4, 2 to 2), listOf(3, 2, 1, 0)),
+    // Devor - a wide, flat stepped rectangle.
+    BoardTemplate(listOf(10 to 4, 8 to 2), listOf(0, 0)),
+    // Romb - a rounder diamond silhouette.
+    BoardTemplate(listOf(8 to 8, 6 to 6, 4 to 4), listOf(3, 1, 0)),
+    // Zinapoya - plain square terraces stacked like a ziggurat.
+    BoardTemplate(listOf(6 to 6, 4 to 4, 2 to 2), listOf(0, 0, 0))
+)
+
 /**
  * Layered step-pyramid: each layer is inset by one full tile width on every
  * side, so a layer never fully covers the ring of tiles around the edge of
@@ -14,17 +37,9 @@ data class Tile(
  * board is unsolvable from move one).
  */
 fun generateBoard(): MutableList<Tile> {
-    val layerSizes = listOf(
-        6 to 6,
-        4 to 4,
-        2 to 2
-    )
-
-    // How many cells to cut from each corner of a layer, forming a staircase
-    // outline instead of a plain rectangle. Cutting only removes tiles, so it
-    // can never break the open-side/covered selectability rules below - it
-    // just carves gaps into a grid that was already provably playable.
-    val cornerCuts = listOf(2, 1, 0)
+    val template = boardTemplates.random()
+    val layerSizes = template.layerSizes
+    val cornerCuts = template.cornerCuts
 
     data class Pos(val x: Int, val y: Int, val z: Int)
     val positions = mutableListOf<Pos>()

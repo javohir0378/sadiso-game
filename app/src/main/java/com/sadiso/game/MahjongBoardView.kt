@@ -37,6 +37,11 @@ class MahjongBoardView @JvmOverloads constructor(
         private const val COMBO_POPUP_MS = 1150L
         private const val SHARD_GRID = 3
         private const val HISTORY_LIMIT = 20
+        // Real mahjong tiles are noticeably taller than wide, like a brick -
+        // not the near-square footprint the fine-grid math would give by
+        // default. This only scales rendering; the underlying fine-grid
+        // stays uniform per axis so adjacency/covering logic is untouched.
+        private const val TILE_ASPECT = 0.74f
     }
 
     interface Listener {
@@ -133,6 +138,7 @@ class MahjongBoardView @JvmOverloads constructor(
     private var lostFired = false
 
     private var unit = 0f
+    private var unitX = 0f
     private var viewW = 0f
     private var boardOffsetX = 0f
     private var boardOffsetY = 0f
@@ -240,6 +246,11 @@ class MahjongBoardView @JvmOverloads constructor(
         wonFired = false
         lostFired = false
         listener?.onMovesChanged(moves)
+        // A new template can have different bounds than the previous board;
+        // onSizeChanged only fires when the view's own size actually
+        // changes, so a same-size relayout wouldn't otherwise recompute the
+        // scale/offsets for the new shape.
+        if (width > 0 && height > 0) computeLayout(width, height)
         requestLayout()
         invalidate()
     }
@@ -295,14 +306,20 @@ class MahjongBoardView @JvmOverloads constructor(
             cachedMaxXFine = mx
             cachedMaxYFine = my
         }
-        val marginFine = 1.2f
+        val marginFine = 1.0f
         val trayFineH = 2.5f
         val trayFineGap = 0.5f
-        val totalFineW = maxOf(cachedMaxXFine + marginFine, TRAY_SIZE * 2.45f + marginFine)
+        // Board width is measured in aspect-scaled (narrower) units since
+        // tiles are brick-shaped, while the tray keeps square-ish slots -
+        // whichever needs more horizontal room sets the width budget.
+        val boardFineW = (cachedMaxXFine + marginFine) * TILE_ASPECT
+        val trayFineW = TRAY_SIZE * 2.45f + marginFine
+        val totalFineW = maxOf(boardFineW, trayFineW)
         val totalFineH = cachedMaxYFine + marginFine + trayFineH + trayFineGap
         unit = minOf(w / totalFineW, h / totalFineH)
+        unitX = unit * TILE_ASPECT
         viewW = w.toFloat()
-        boardOffsetX = (w - cachedMaxXFine * unit) / 2f
+        boardOffsetX = (w - cachedMaxXFine * unitX) / 2f
         val contentH = (cachedMaxYFine + trayFineH + trayFineGap) * unit
         val topMargin = (h - contentH) / 2f
         trayOffsetY = topMargin
@@ -313,9 +330,9 @@ class MahjongBoardView @JvmOverloads constructor(
 
     private fun rectFor(t: Tile): RectF {
         val shift = t.z * layerShiftPx
-        val left = boardOffsetX + t.x * unit - shift
+        val left = boardOffsetX + t.x * unitX - shift
         val top = boardOffsetY + t.y * unit - shift
-        val w = unit * 1.97f
+        val w = unitX * 1.97f
         val hgt = unit * 2.03f
         return RectF(left, top, left + w, top + hgt)
     }
@@ -370,7 +387,7 @@ class MahjongBoardView @JvmOverloads constructor(
     }
 
     private fun drawTile(canvas: Canvas, rect: RectF, symbol: String, highlight: Boolean, alpha: Int) {
-        val radius = unit * 0.28f
+        val radius = minOf(unitX, unit) * 0.28f
 
         val sideRect = RectF(rect.left, rect.top + unit * 0.13f, rect.right, rect.bottom + unit * 0.13f)
         sidePaint.color = Color.argb(alpha, 0xC4, 0xAE, 0x7C)
@@ -554,7 +571,7 @@ class MahjongBoardView @JvmOverloads constructor(
     }
 
     private fun drawTileBack(canvas: Canvas, rect: RectF) {
-        val radius = unit * 0.28f
+        val radius = minOf(unitX, unit) * 0.28f
 
         val sideRect = RectF(rect.left, rect.top + unit * 0.13f, rect.right, rect.bottom + unit * 0.13f)
         sidePaint.color = Color.parseColor("#A9740F")
