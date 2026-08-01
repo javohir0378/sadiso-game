@@ -18,4 +18,6 @@
     <color name="tray_wood_light">#7A5027</color>
     <color name="tray_wood_dark">#432B14</color>
     <color name="tray_wood_border">#C99A54</color>
+    <color name="error_red">#FF6B6B</color>
+    <color name="text_title">#F5EAD3</color>
 </resources>

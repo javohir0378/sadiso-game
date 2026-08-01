@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "VitaMahjong"
+rootProject.name = "SadisoGame"
 include(":app")

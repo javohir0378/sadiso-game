@@ -1,7 +1,43 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Vita Mahjong</string>
+    <string name="app_name">Sadiso Game</string>
     <string name="new_game">Yangi o\'yin</string>
     <string name="shuffle">Aralashtirish</string>
     <string name="undo">Orqaga</string>
+
+    <string name="login_loading">Yuklanmoqda…</string>
+
+    <string name="login_phone_title">Telefon raqamingiz</string>
+    <string name="login_phone_subtitle">Tasdiqlash kodi shu raqamga yuboriladi</string>
+    <string name="login_phone_hint">+998 90 123 45 67</string>
+
+    <string name="login_code_title">Tasdiqlash kodi</string>
+    <string name="login_code_subtitle">Telegram orqali yuborilgan kodni kiriting</string>
+    <string name="login_code_hint">Kod</string>
+    <string name="login_code_back">Raqamni o\'zgartirish</string>
+
+    <string name="login_password_title">Ikki bosqichli parol</string>
+    <string name="login_password_subtitle">Hisobingiz qo\'shimcha parol bilan himoyalangan</string>
+    <string name="login_password_hint">Parol</string>
+
+    <string name="login_email_title">Email manzil</string>
+    <string name="login_email_subtitle">Tasdiqlash uchun email manzilingizni kiriting</string>
+    <string name="login_email_hint">email@misol.com</string>
+
+    <string name="login_email_code_title">Email kodi</string>
+    <string name="login_email_code_subtitle">Emailingizga yuborilgan kodni kiriting</string>
+    <string name="login_email_code_hint">Kod</string>
+
+    <string name="login_registration_title">Ro\'yxatdan o\'tish</string>
+    <string name="login_registration_subtitle">Ism va familiyangizni kiriting</string>
+    <string name="login_first_name_hint">Ism</string>
+    <string name="login_last_name_hint">Familiya</string>
+
+    <string name="login_continue">Davom etish</string>
+
+    <string name="menu_subtitle">O\'yinlar to\'plami</string>
+    <string name="menu_mahjong_title">Mahjong</string>
+    <string name="menu_mahjong_subtitle">Juftliklarni toping</string>
+    <string name="menu_coming_soon_title">Tez orada</string>
+    <string name="menu_coming_soon_subtitle">Yangi o\'yin qo\'shilmoqda</string>
 </resources>
