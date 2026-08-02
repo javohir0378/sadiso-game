@@ -2,9 +2,12 @@ package com.sadiso.game
 
 import android.app.AlertDialog
 import android.content.Context
+import android.graphics.BitmapFactory
+import android.graphics.Outline
 import android.graphics.Typeface
 import android.view.Gravity
 import android.view.View
+import android.view.ViewOutlineProvider
 import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.ImageView
@@ -17,6 +20,7 @@ class MahjongFragment : BaseFragment(), MahjongBoardView.Listener {
     private lateinit var ctx: Context
     private lateinit var board: MahjongBoardView
     private lateinit var statusNumberText: TextView
+    private lateinit var avatarView: ImageView
 
     override fun createView(context: Context): View {
         ctx = context
@@ -97,7 +101,17 @@ class MahjongFragment : BaseFragment(), MahjongBoardView.Listener {
         }
 
         onMovesChanged(0)
+        loadAvatar()
         return root
+    }
+
+    private fun loadAvatar() {
+        val activity = parentActivity as? LaunchActivity ?: return
+        activity.tdlib.fetchProfilePhoto { path ->
+            if (path == null) return@fetchProfilePhoto
+            val bitmap = BitmapFactory.decodeFile(path) ?: return@fetchProfilePhoto
+            avatarView.setImageBitmap(bitmap)
+        }
     }
 
     private fun iconColumn(iconRes: Int, label: String, bgRes: Int, sizeDp: Int): Pair<LinearLayout, ImageButton> {
@@ -133,19 +147,40 @@ class MahjongFragment : BaseFragment(), MahjongBoardView.Listener {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
             setBackgroundResource(R.drawable.plaque_bg)
-            setPadding(ctx.dp(22), ctx.dp(8), ctx.dp(22), ctx.dp(8))
+            setPadding(ctx.dp(18), ctx.dp(10), ctx.dp(18), ctx.dp(10))
         }
-        plaque.addView(TextView(ctx).apply {
-            text = ctx.getString(R.string.moves_label)
-            setTextColor(ContextCompat.getColor(context, R.color.label_muted))
-            textSize = 10f
-            letterSpacing = 0.15f
-            gravity = Gravity.CENTER
-        })
+
+        avatarView = ImageView(ctx).apply {
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            setImageResource(R.drawable.ic_person)
+            setBackgroundResource(R.drawable.circle_button_bg)
+            val pad = ctx.dp(9)
+            setPadding(pad, pad, pad, pad)
+            clipToOutline = true
+            outlineProvider = object : ViewOutlineProvider() {
+                override fun getOutline(view: View, outline: Outline) {
+                    outline.setOval(0, 0, view.width, view.height)
+                }
+            }
+        }
+        plaque.addView(avatarView, LinearLayout.LayoutParams(ctx.dp(48), ctx.dp(48)))
+
+        plaque.addView(
+            TextView(ctx).apply {
+                text = ctx.getString(R.string.moves_label)
+                setTextColor(ContextCompat.getColor(context, R.color.label_muted))
+                textSize = 10f
+                letterSpacing = 0.15f
+                gravity = Gravity.CENTER
+            },
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = ctx.dp(6)
+            }
+        )
         statusNumberText = TextView(ctx).apply {
             text = "0"
             setTextColor(ContextCompat.getColor(context, R.color.text_title))
-            textSize = 22f
+            textSize = 20f
             setTypeface(typeface, Typeface.BOLD)
             gravity = Gravity.CENTER
         }
@@ -153,18 +188,6 @@ class MahjongFragment : BaseFragment(), MahjongBoardView.Listener {
             statusNumberText,
             LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
                 topMargin = ctx.dp(2)
-            }
-        )
-        plaque.addView(
-            TextView(ctx).apply {
-                text = "☆ ☆ ☆"
-                setTextColor(ContextCompat.getColor(context, R.color.accent_gold))
-                textSize = 12f
-                gravity = Gravity.CENTER
-                alpha = 0.6f
-            },
-            LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                topMargin = ctx.dp(4)
             }
         )
         return plaque

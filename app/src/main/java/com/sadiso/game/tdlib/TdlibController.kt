@@ -91,4 +91,23 @@ class TdlibController(context: Context) {
     fun logOut() {
         send(TdApi.LogOut(), "logOut")
     }
+
+    /** Calls back on the main thread with a local file path, or null if there's no photo. */
+    fun fetchProfilePhoto(onReady: (String?) -> Unit) {
+        client.send(TdApi.GetMe()) { meObj ->
+            val photo = (meObj as? TdApi.User)?.profilePhoto
+            if (photo == null) {
+                mainHandler.post { onReady(null) }
+                return@send
+            }
+            if (photo.small.local.isDownloadingCompleted) {
+                mainHandler.post { onReady(photo.small.local.path) }
+                return@send
+            }
+            client.send(TdApi.DownloadFile(photo.small.id, 1, 0, 0, true)) { fileObj ->
+                val path = (fileObj as? TdApi.File)?.takeIf { it.local.isDownloadingCompleted }?.local?.path
+                mainHandler.post { onReady(path) }
+            }
+        }
+    }
 }
