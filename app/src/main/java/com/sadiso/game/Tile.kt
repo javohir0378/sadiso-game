@@ -17,17 +17,22 @@ private data class BoardTemplate(
 // satisfy 2*cut < min(cols, rows) - that's what keeps the "layer inset"
 // invariant below true regardless of which template is picked, so every
 // shape is provably playable, not just the original cross.
+//
+// Every template is capped at 6 columns/rows - a wider top layer forces a
+// much smaller per-tile scale to fit the screen width, so keeping all
+// shapes within the same footprint keeps tiles a consistently large size
+// no matter which one gets picked.
 private val boardTemplates = listOf(
-    // Xoch (cross) - the original shape.
+    // Xoch (cross).
     BoardTemplate(listOf(6 to 6, 4 to 4, 2 to 2), listOf(2, 1, 0)),
-    // Piramida - deeper, octagon-ish silhouette.
-    BoardTemplate(listOf(8 to 8, 6 to 6, 4 to 4, 2 to 2), listOf(3, 2, 1, 0)),
-    // Devor - a wide, flat stepped rectangle.
-    BoardTemplate(listOf(10 to 4, 8 to 2), listOf(0, 0)),
-    // Romb - a rounder diamond silhouette.
-    BoardTemplate(listOf(8 to 8, 6 to 6, 4 to 4), listOf(3, 1, 0)),
     // Zinapoya - plain square terraces stacked like a ziggurat.
-    BoardTemplate(listOf(6 to 6, 4 to 4, 2 to 2), listOf(0, 0, 0))
+    BoardTemplate(listOf(6 to 6, 4 to 4, 2 to 2), listOf(0, 0, 0)),
+    // Devor - a wide, flat stepped rectangle.
+    BoardTemplate(listOf(6 to 4, 4 to 2), listOf(0, 0)),
+    // Romb - a fuller, rounder cross.
+    BoardTemplate(listOf(6 to 6, 4 to 4, 2 to 2), listOf(1, 1, 0)),
+    // Tekis - a single flat layer, nothing covered.
+    BoardTemplate(listOf(6 to 4), listOf(0))
 )
 
 /**

@@ -150,12 +150,13 @@ class MahjongFragment : BaseFragment(), MahjongBoardView.Listener {
             setPadding(ctx.dp(18), ctx.dp(10), ctx.dp(18), ctx.dp(10))
         }
 
+        val avatarFrame = FrameLayout(ctx).apply {
+            setBackgroundResource(R.drawable.avatar_glow)
+        }
         avatarView = ImageView(ctx).apply {
             scaleType = ImageView.ScaleType.CENTER_CROP
             setImageResource(R.drawable.ic_person)
-            setBackgroundResource(R.drawable.circle_button_bg)
-            val pad = ctx.dp(9)
-            setPadding(pad, pad, pad, pad)
+            setBackgroundColor(ContextCompat.getColor(context, R.color.circle_button_fill_dark))
             clipToOutline = true
             outlineProvider = object : ViewOutlineProvider() {
                 override fun getOutline(view: View, outline: Outline) {
@@ -163,7 +164,8 @@ class MahjongFragment : BaseFragment(), MahjongBoardView.Listener {
                 }
             }
         }
-        plaque.addView(avatarView, LinearLayout.LayoutParams(ctx.dp(48), ctx.dp(48)))
+        avatarFrame.addView(avatarView, FrameLayout.LayoutParams(ctx.dp(48), ctx.dp(48), Gravity.CENTER))
+        plaque.addView(avatarFrame, LinearLayout.LayoutParams(ctx.dp(58), ctx.dp(58)))
 
         plaque.addView(
             TextView(ctx).apply {

@@ -2,8 +2,12 @@
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item>
         <shape android:shape="rectangle">
-            <corners android:radius="16dp" />
-            <solid android:color="@color/plaque_bg" />
+            <corners android:radius="18dp" />
+            <gradient
+                android:type="linear"
+                android:angle="90"
+                android:startColor="#24402B"
+                android:endColor="#0F2016" />
             <stroke
                 android:width="2dp"
                 android:color="@color/tray_wood_border" />
