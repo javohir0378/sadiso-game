@@ -143,6 +143,7 @@ class MahjongBoardView @JvmOverloads constructor(
 
     private var unit = 0f
     private var unitX = 0f
+    private var trayUnit = 0f
     private var viewW = 0f
     private var boardOffsetX = 0f
     private var boardOffsetY = 0f
@@ -329,23 +330,31 @@ class MahjongBoardView @JvmOverloads constructor(
         val marginFine = 1.0f
         val trayFineH = 2.5f
         val trayFineGap = 0.5f
-        // Board width is measured in aspect-scaled (narrower) units since
-        // tiles are brick-shaped, while the tray keeps square-ish slots -
-        // whichever needs more horizontal room sets the width budget.
-        val boardFineW = (cachedMaxXFine + marginFine) * TILE_ASPECT
+        // Extra empty space kept ABOVE the tray, inside the view's own
+        // bounds - a burst effect centered in the tray needs somewhere to
+        // fly upward into, or it gets clipped by the view's own edge and
+        // just vanishes.
+        val trayTopBufferFine = 1.3f
+
+        // The tray's own size/position depends only on the view's width,
+        // never on which board template is active, so it never grows,
+        // shrinks or shifts between games the way the board itself does.
         val trayFineW = TRAY_SIZE * 2.45f + marginFine
-        val totalFineW = maxOf(boardFineW, trayFineW)
-        val totalFineH = cachedMaxYFine + marginFine + trayFineH + trayFineGap
-        unit = minOf(w / totalFineW, h / totalFineH)
-        unitX = unit * TILE_ASPECT
+        trayUnit = w / trayFineW
         viewW = w.toFloat()
+        trayOffsetY = trayUnit * trayTopBufferFine
+        traySlotSize = trayUnit * 2.4f
+        traySlotGap = trayUnit * 0.25f
+
+        val boardTopY = trayOffsetY + (trayFineH + trayFineGap) * trayUnit
+        val boardFineW = (cachedMaxXFine + marginFine) * TILE_ASPECT
+        val availableBoardH = (h - boardTopY - marginFine * trayUnit).coerceAtLeast(1f)
+        unit = minOf(w / boardFineW, availableBoardH / (cachedMaxYFine + marginFine))
+        unitX = unit * TILE_ASPECT
         boardOffsetX = (w - cachedMaxXFine * unitX) / 2f
-        val contentH = (cachedMaxYFine + trayFineH + trayFineGap) * unit
-        val topMargin = (h - contentH) / 2f
-        trayOffsetY = topMargin
-        boardOffsetY = topMargin + (trayFineH + trayFineGap) * unit
-        traySlotSize = unit * 2.4f
-        traySlotGap = unit * 0.25f
+        val boardContentH = cachedMaxYFine * unit
+        val extra = (availableBoardH - boardContentH).coerceAtLeast(0f)
+        boardOffsetY = boardTopY + extra / 2f
     }
 
     private fun rectFor(t: Tile): RectF {
@@ -728,10 +737,16 @@ class MahjongBoardView @JvmOverloads constructor(
                 val rx = dirX * cosJ - dirY * sinJ
                 val ry = dirX * sinJ + dirY * cosJ
                 val speed = unit * (2.6f + Random.nextFloat() * 1.8f)
+                // The impact point sits near the tray at the top of the
+                // view, so shards can't be allowed to fly upward much - the
+                // view clips its own canvas at y=0 and they'd just vanish.
+                // Damping the direction's vertical component and adding a
+                // strong downward push keeps the burst inside the visible
+                // board area even for the top row of shards.
                 list.add(
                     Shard(
                         relLeft, relTop, relRight, relBottom,
-                        rx * speed, ry * speed - unit * 0.5f,
+                        rx * speed, ry * speed * 0.45f + unit * 1.5f,
                         (Random.nextFloat() * 2f - 1f) * 2.2f,
                         if (i % 2 == 0) colorA else colorB
                     )
@@ -917,11 +932,15 @@ class MahjongBoardView @JvmOverloads constructor(
                 elapsed < PULL_MS + CONVERGE_MS + POP_MS -> {
                     val raw = (elapsed - PULL_MS - CONVERGE_MS).toFloat() / POP_MS
                     val eased = easeOutCubic(raw)
-                    val glowRadius = lerp(traySlotSize * 0.3f, traySlotSize * 1.2f, eased)
+                    // The impact point can sit close to the top of the view
+                    // (near the tray) - never let the glow/ring reach past
+                    // the view's own top edge or it just gets clipped away.
+                    val headroom = impact.y * 0.95f
+                    val glowRadius = lerp(traySlotSize * 0.3f, traySlotSize * 1.2f, eased).coerceAtMost(headroom)
                     glowPaint.alpha = ((1f - raw) * 255).toInt()
                     canvas.drawCircle(impact.x, impact.y, glowRadius, glowPaint)
 
-                    val ringRadius = lerp(traySlotSize * 0.35f, traySlotSize * 1.6f, eased)
+                    val ringRadius = lerp(traySlotSize * 0.35f, traySlotSize * 1.6f, eased).coerceAtMost(headroom)
                     ringPaint.strokeWidth = unit * 0.09f * (1f - raw)
                     ringPaint.alpha = ((1f - raw) * 220).toInt()
                     canvas.drawCircle(impact.x, impact.y, ringRadius, ringPaint)
