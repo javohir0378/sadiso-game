@@ -43,6 +43,8 @@
     <string name="menu_subtitle">O\'yinlar to\'plami</string>
     <string name="menu_mahjong_title">Mahjong</string>
     <string name="menu_mahjong_subtitle">Juftliklarni toping</string>
+    <string name="menu_onet_title">Onet Deluxe</string>
+    <string name="menu_onet_subtitle">Bir xil rasmlarni bog\'lang</string>
     <string name="menu_coming_soon_title">Tez orada</string>
     <string name="menu_coming_soon_subtitle">Yangi o\'yin qo\'shilmoqda</string>
 </resources>

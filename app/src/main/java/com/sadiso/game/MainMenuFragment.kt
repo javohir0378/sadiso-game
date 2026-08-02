@@ -49,6 +49,9 @@ class MainMenuFragment : BaseFragment() {
         val mahjongCard = gameCard(R.drawable.ic_new_game, ctx.getString(R.string.menu_mahjong_title), ctx.getString(R.string.menu_mahjong_subtitle))
         menuRoot.addView(mahjongCard, cardParams())
 
+        val onetCard = gameCard(R.drawable.ic_onet, ctx.getString(R.string.menu_onet_title), ctx.getString(R.string.menu_onet_subtitle))
+        menuRoot.addView(onetCard, cardParams())
+
         val comingSoonCard = gameCard(R.drawable.ic_shuffle, ctx.getString(R.string.menu_coming_soon_title), ctx.getString(R.string.menu_coming_soon_subtitle)).apply {
             alpha = 0.45f
         }
@@ -56,6 +59,9 @@ class MainMenuFragment : BaseFragment() {
 
         mahjongCard.setOnClickListener {
             presentFragment(MahjongFragment())
+        }
+        onetCard.setOnClickListener {
+            presentFragment(OnetFragment())
         }
 
         return root
