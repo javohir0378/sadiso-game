@@ -29,4 +29,5 @@
     <color name="button_blue_dark">#1E5A94</color>
     <color name="plaque_bg">#1A2E1E</color>
     <color name="hint_glow">#FFF176</color>
+    <color name="toolbar_bg">#1C2E20</color>
 </resources>

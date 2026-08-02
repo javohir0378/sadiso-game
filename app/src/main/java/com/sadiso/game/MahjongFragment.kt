@@ -14,13 +14,14 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.content.ContextCompat
+import com.sadiso.game.tdlib.TdlibController
 
 class MahjongFragment : BaseFragment(), MahjongBoardView.Listener {
 
     private lateinit var ctx: Context
     private lateinit var board: MahjongBoardView
-    private lateinit var statusNumberText: TextView
     private lateinit var avatarView: ImageView
+    private lateinit var nameText: TextView
 
     override fun createView(context: Context): View {
         ctx = context
@@ -32,36 +33,73 @@ class MahjongFragment : BaseFragment(), MahjongBoardView.Listener {
         }
         root.addView(contentRoot, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
 
+        // Telegram-style toolbar: back button, avatar + name, settings icon.
         val topBar = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(ctx.dp(12), ctx.dp(18), ctx.dp(12), ctx.dp(8))
+            setBackgroundColor(ContextCompat.getColor(context, R.color.toolbar_bg))
+            setPadding(ctx.dp(4), ctx.dp(16), ctx.dp(14), ctx.dp(10))
         }
         contentRoot.addView(topBar, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
 
-        // left: refresh
-        val leftGroup = FrameLayout(ctx)
-        topBar.addView(leftGroup, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-        val (refreshCol, refreshBtn) = iconColumn(R.drawable.ic_new_game, ctx.getString(R.string.action_refresh), R.drawable.circle_button_bg, 46)
-        leftGroup.addView(refreshCol, FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.START or Gravity.CENTER_VERTICAL))
-
-        // center: moves plaque
-        val plaque = buildPlaque()
-        topBar.addView(plaque, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT))
-
-        // right: home + settings
-        val rightGroup = FrameLayout(ctx)
-        topBar.addView(rightGroup, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-        val rightRow = LinearLayout(ctx).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
+        val backBtn = ImageButton(ctx).apply {
+            setBackgroundResource(R.drawable.borderless_icon_bg)
+            setImageResource(R.drawable.ic_back)
+            contentDescription = ctx.getString(R.string.main_menu)
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            setPadding(ctx.dp(10), ctx.dp(10), ctx.dp(10), ctx.dp(10))
         }
-        val (homeCol, homeBtn) = iconColumn(R.drawable.ic_home, ctx.getString(R.string.action_home), R.drawable.circle_button_bg, 46)
-        val (settingsCol, settingsBtn) = iconColumn(R.drawable.ic_settings, ctx.getString(R.string.action_settings), R.drawable.circle_button_bg, 46)
-        rightRow.addView(homeCol)
-        rightRow.addView(View(ctx), LinearLayout.LayoutParams(ctx.dp(10), 1))
-        rightRow.addView(settingsCol)
-        rightGroup.addView(rightRow, FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.END or Gravity.CENTER_VERTICAL))
+        topBar.addView(backBtn, LinearLayout.LayoutParams(ctx.dp(44), ctx.dp(44)))
+
+        val avatarFrame = FrameLayout(ctx)
+        avatarView = ImageView(ctx).apply {
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            setImageResource(R.drawable.ic_person)
+            setBackgroundColor(ContextCompat.getColor(context, R.color.circle_button_fill_dark))
+            clipToOutline = true
+            outlineProvider = object : ViewOutlineProvider() {
+                override fun getOutline(view: View, outline: Outline) {
+                    outline.setOval(0, 0, view.width, view.height)
+                }
+            }
+        }
+        avatarFrame.addView(avatarView, FrameLayout.LayoutParams(ctx.dp(40), ctx.dp(40)))
+        topBar.addView(
+            avatarFrame,
+            LinearLayout.LayoutParams(ctx.dp(40), ctx.dp(40)).apply { marginStart = ctx.dp(4) }
+        )
+
+        val nameColumn = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+        nameText = TextView(ctx).apply {
+            text = ""
+            setTextColor(ContextCompat.getColor(context, R.color.text_title))
+            textSize = 16f
+            setTypeface(typeface, Typeface.BOLD)
+            maxLines = 1
+        }
+        nameColumn.addView(nameText)
+        nameColumn.addView(TextView(ctx).apply {
+            text = ctx.getString(R.string.menu_mahjong_title)
+            setTextColor(ContextCompat.getColor(context, R.color.label_muted))
+            textSize = 12f
+        })
+        topBar.addView(
+            nameColumn,
+            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                marginStart = ctx.dp(12)
+            }
+        )
+
+        val settingsBtn = ImageButton(ctx).apply {
+            setBackgroundResource(R.drawable.borderless_icon_bg)
+            setImageResource(R.drawable.ic_settings)
+            contentDescription = ctx.getString(R.string.action_settings)
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            setPadding(ctx.dp(10), ctx.dp(10), ctx.dp(10), ctx.dp(10))
+        }
+        topBar.addView(settingsBtn, LinearLayout.LayoutParams(ctx.dp(44), ctx.dp(44)))
 
         board = MahjongBoardView(ctx)
         contentRoot.addView(board, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
@@ -83,7 +121,6 @@ class MahjongFragment : BaseFragment(), MahjongBoardView.Listener {
         bottomBar.addView(undoCol)
 
         board.listener = this
-        refreshBtn.setOnClickListener { board.newGame() }
         shuffleBtn.setOnClickListener { board.shuffleRemaining() }
         hintBtn.setOnClickListener {
             if (!board.hint()) {
@@ -91,7 +128,7 @@ class MahjongFragment : BaseFragment(), MahjongBoardView.Listener {
             }
         }
         undoBtn.setOnClickListener { board.undo() }
-        homeBtn.setOnClickListener { finishFragment() }
+        backBtn.setOnClickListener { finishFragment() }
         settingsBtn.setOnClickListener {
             AlertDialog.Builder(ctx)
                 .setTitle(ctx.getString(R.string.settings_soon_title))
@@ -100,16 +137,16 @@ class MahjongFragment : BaseFragment(), MahjongBoardView.Listener {
                 .show()
         }
 
-        onMovesChanged(0)
-        loadAvatar()
+        loadMe()
         return root
     }
 
-    private fun loadAvatar() {
+    private fun loadMe() {
         val activity = parentActivity as? LaunchActivity ?: return
-        activity.tdlib.fetchProfilePhoto { path ->
-            if (path == null) return@fetchProfilePhoto
-            val bitmap = BitmapFactory.decodeFile(path) ?: return@fetchProfilePhoto
+        activity.tdlib.fetchMe { me: TdlibController.Me ->
+            nameText.text = me.name
+            val path = me.photoPath ?: return@fetchMe
+            val bitmap = BitmapFactory.decodeFile(path) ?: return@fetchMe
             avatarView.setImageBitmap(bitmap)
         }
     }
@@ -142,61 +179,9 @@ class MahjongFragment : BaseFragment(), MahjongBoardView.Listener {
         return col to btn
     }
 
-    private fun buildPlaque(): LinearLayout {
-        val plaque = LinearLayout(ctx).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_HORIZONTAL
-            setBackgroundResource(R.drawable.plaque_bg)
-            setPadding(ctx.dp(18), ctx.dp(10), ctx.dp(18), ctx.dp(10))
-        }
-
-        val avatarFrame = FrameLayout(ctx).apply {
-            setBackgroundResource(R.drawable.avatar_glow)
-        }
-        avatarView = ImageView(ctx).apply {
-            scaleType = ImageView.ScaleType.CENTER_CROP
-            setImageResource(R.drawable.ic_person)
-            setBackgroundColor(ContextCompat.getColor(context, R.color.circle_button_fill_dark))
-            clipToOutline = true
-            outlineProvider = object : ViewOutlineProvider() {
-                override fun getOutline(view: View, outline: Outline) {
-                    outline.setOval(0, 0, view.width, view.height)
-                }
-            }
-        }
-        avatarFrame.addView(avatarView, FrameLayout.LayoutParams(ctx.dp(48), ctx.dp(48), Gravity.CENTER))
-        plaque.addView(avatarFrame, LinearLayout.LayoutParams(ctx.dp(58), ctx.dp(58)))
-
-        plaque.addView(
-            TextView(ctx).apply {
-                text = ctx.getString(R.string.moves_label)
-                setTextColor(ContextCompat.getColor(context, R.color.label_muted))
-                textSize = 10f
-                letterSpacing = 0.15f
-                gravity = Gravity.CENTER
-            },
-            LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                topMargin = ctx.dp(6)
-            }
-        )
-        statusNumberText = TextView(ctx).apply {
-            text = "0"
-            setTextColor(ContextCompat.getColor(context, R.color.text_title))
-            textSize = 20f
-            setTypeface(typeface, Typeface.BOLD)
-            gravity = Gravity.CENTER
-        }
-        plaque.addView(
-            statusNumberText,
-            LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                topMargin = ctx.dp(2)
-            }
-        )
-        return plaque
-    }
-
     override fun onMovesChanged(moves: Int) {
-        statusNumberText.text = moves.toString()
+        // Moves count is no longer shown in the toolbar, but still tracked
+        // internally by the board for the win-dialog message below.
     }
 
     override fun onWin(moves: Int) {
