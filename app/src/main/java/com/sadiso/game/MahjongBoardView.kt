@@ -11,6 +11,8 @@ import android.graphics.RadialGradient
 import android.graphics.RectF
 import android.graphics.Shader
 import android.graphics.Typeface
+import android.media.AudioAttributes
+import android.media.SoundPool
 import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
@@ -121,6 +123,15 @@ class MahjongBoardView @JvmOverloads constructor(
         val speed: Float
     )
 
+    private data class Confetto(
+        val x: Float,
+        val y: Float,
+        val vx: Float,
+        val vy: Float,
+        val color: Int,
+        val phase: Float
+    )
+
     var listener: Listener? = null
 
     private var tiles: MutableList<Tile> = generateBoard()
@@ -128,7 +139,12 @@ class MahjongBoardView @JvmOverloads constructor(
     private val flyingTiles = mutableListOf<FlyingTile>()
     private var undoFlight: UndoFlight? = null
     private val growingSlots = mutableListOf<GrowingSlot>()
-    private var matchBurst: MatchBurst? = null
+    // A list, not a single nullable value - matching quickly enough that a
+    // second pair completes before the first burst finishes playing must
+    // not cut the first one's animation short.
+    private val matchBursts = mutableListOf<MatchBurst>()
+    private var confetti: List<Confetto> = emptyList()
+    private var confettiStartTime = 0L
     private var comboPopup: ComboPopup? = null
     private var comboCount = 0
     private var lastMatchTime = 0L
@@ -237,6 +253,53 @@ class MahjongBoardView @JvmOverloads constructor(
         color = Color.parseColor("#FFD54F")
         textAlign = Paint.Align.CENTER
     }
+    private val confettiPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+
+    private val soundPool: SoundPool? = if (isInEditMode) null else SoundPool.Builder()
+        .setMaxStreams(4)
+        .setAudioAttributes(
+            AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_GAME)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .build()
+        )
+        .build()
+    private val matchSoundId = soundPool?.load(context, R.raw.match_pop, 1) ?: 0
+    private val winSoundId = soundPool?.load(context, R.raw.win_fanfare, 1) ?: 0
+
+    private fun playMatchSound() {
+        soundPool?.play(matchSoundId, 0.8f, 0.8f, 0, 0, 1f)
+    }
+
+    private fun playWinSound() {
+        soundPool?.play(winSoundId, 0.9f, 0.9f, 0, 0, 1f)
+    }
+
+    override fun onDetachedFromWindow() {
+        super.onDetachedFromWindow()
+        soundPool?.release()
+    }
+
+    private fun spawnWinCelebration() {
+        val w = width.toFloat()
+        if (w <= 0f) return
+        val colors = intArrayOf(
+            Color.parseColor("#FFD54F"), Color.parseColor("#FFF176"),
+            Color.parseColor("#4FC3F7"), Color.parseColor("#81C784"),
+            Color.parseColor("#FF8A65"), Color.parseColor("#F5EAD3")
+        )
+        confettiStartTime = System.currentTimeMillis()
+        confetti = List(70) {
+            Confetto(
+                x = Random.nextFloat() * w,
+                y = -Random.nextFloat() * unit * 5f,
+                vx = (Random.nextFloat() * 2f - 1f) * unit * 0.7f,
+                vy = unit * (1.3f + Random.nextFloat() * 1.5f),
+                color = colors[Random.nextInt(colors.size)],
+                phase = Random.nextFloat() * 6.2832f
+            )
+        }
+    }
 
     private fun isAnimating() =
         flyingTiles.isNotEmpty() || undoFlight != null || shuffleAnims.isNotEmpty()
@@ -245,7 +308,8 @@ class MahjongBoardView @JvmOverloads constructor(
         tiles = generateBoard()
         for (i in 0 until TRAY_SIZE) traySlots[i] = null
         growingSlots.clear()
-        matchBurst = null
+        matchBursts.clear()
+        confetti = emptyList()
         comboPopup = null
         comboCount = 0
         lastMatchTime = 0L
@@ -283,7 +347,7 @@ class MahjongBoardView @JvmOverloads constructor(
     }
 
     fun hint(): Boolean {
-        if (isAnimating() || matchBurst != null) return true
+        if (isAnimating() || matchBursts.isNotEmpty()) return true
         val selectable = tiles.filter { isSelectable(it, tiles) }
         val pair = selectable.groupBy { it.symbol }.values.firstOrNull { it.size >= 2 } ?: return false
         hintFlash = HintFlash(pair[0], pair[1], System.currentTimeMillis())
@@ -292,7 +356,7 @@ class MahjongBoardView @JvmOverloads constructor(
     }
 
     fun undo() {
-        if (isAnimating() || matchBurst != null) return
+        if (isAnimating() || matchBursts.isNotEmpty()) return
         val rec = history.removeLastOrNull() ?: return
 
         moves = rec.movesBefore
@@ -902,63 +966,66 @@ class MahjongBoardView @JvmOverloads constructor(
             needsMoreFrames = needsMoreFrames || growingSlots.isNotEmpty()
         }
 
-        val mb = matchBurst
-        if (mb != null) {
-            val elapsed = now - mb.startTime
-            val impact = mb.impact
+        if (matchBursts.isNotEmpty()) {
+            var anyFinished = false
+            for (mb in matchBursts) {
+                val elapsed = now - mb.startTime
+                val impact = mb.impact
 
-            when {
-                elapsed < PULL_MS -> {
-                    val raw = easeOutCubic((elapsed.toFloat() / PULL_MS).coerceIn(0f, 1f))
-                    val scale = lerp(1f, 1.12f, raw)
-                    val ax = lerp(mb.fromA.centerX(), mb.windupA.x, raw)
-                    val ay = lerp(mb.fromA.centerY(), mb.windupA.y, raw)
-                    val bx = lerp(mb.fromB.centerX(), mb.windupB.x, raw)
-                    val by = lerp(mb.fromB.centerY(), mb.windupB.y, raw)
-                    drawTile(canvas, rectAt(ax, ay, traySlotSize * scale), mb.tileA.symbol, highlight = true, alpha = 255)
-                    drawTile(canvas, rectAt(bx, by, traySlotSize * scale), mb.tileB.symbol, highlight = true, alpha = 255)
-                }
-                elapsed < PULL_MS + CONVERGE_MS -> {
-                    val t = ((elapsed - PULL_MS).toFloat() / CONVERGE_MS).coerceIn(0f, 1f)
-                    val raw = t * t * t
-                    val scale = lerp(1.12f, 1.5f, raw)
-                    val ax = lerp(mb.windupA.x, impact.x, raw)
-                    val ay = lerp(mb.windupA.y, impact.y, raw)
-                    val bx = lerp(mb.windupB.x, impact.x, raw)
-                    val by = lerp(mb.windupB.y, impact.y, raw)
-                    drawTile(canvas, rectAt(ax, ay, traySlotSize * scale), mb.tileA.symbol, highlight = true, alpha = 255)
-                    drawTile(canvas, rectAt(bx, by, traySlotSize * scale), mb.tileB.symbol, highlight = true, alpha = 255)
-                }
-                elapsed < PULL_MS + CONVERGE_MS + POP_MS -> {
-                    val raw = (elapsed - PULL_MS - CONVERGE_MS).toFloat() / POP_MS
-                    val eased = easeOutCubic(raw)
-                    // The impact point can sit close to the top of the view
-                    // (near the tray) - never let the glow/ring reach past
-                    // the view's own top edge or it just gets clipped away.
-                    val headroom = impact.y * 0.95f
-                    val glowRadius = lerp(traySlotSize * 0.3f, traySlotSize * 1.2f, eased).coerceAtMost(headroom)
-                    glowPaint.alpha = ((1f - raw) * 255).toInt()
-                    canvas.drawCircle(impact.x, impact.y, glowRadius, glowPaint)
-
-                    val ringRadius = lerp(traySlotSize * 0.35f, traySlotSize * 1.6f, eased).coerceAtMost(headroom)
-                    ringPaint.strokeWidth = unit * 0.09f * (1f - raw)
-                    ringPaint.alpha = ((1f - raw) * 220).toInt()
-                    canvas.drawCircle(impact.x, impact.y, ringRadius, ringPaint)
-                }
-                elapsed < PULL_MS + CONVERGE_MS + POP_MS + BURST_MS -> {
-                    val raw = (elapsed - PULL_MS - CONVERGE_MS - POP_MS).toFloat() / BURST_MS
-                    val alpha = ((1f - raw) * 255).toInt().coerceIn(0, 255)
-                    val baseRect = rectAt(impact.x, impact.y, traySlotSize * 1.5f)
-                    for (s in mb.shards) {
-                        drawShard(canvas, baseRect, s, raw, alpha)
+                when {
+                    elapsed < PULL_MS -> {
+                        val raw = easeOutCubic((elapsed.toFloat() / PULL_MS).coerceIn(0f, 1f))
+                        val scale = lerp(1f, 1.12f, raw)
+                        val ax = lerp(mb.fromA.centerX(), mb.windupA.x, raw)
+                        val ay = lerp(mb.fromA.centerY(), mb.windupA.y, raw)
+                        val bx = lerp(mb.fromB.centerX(), mb.windupB.x, raw)
+                        val by = lerp(mb.fromB.centerY(), mb.windupB.y, raw)
+                        drawTile(canvas, rectAt(ax, ay, traySlotSize * scale), mb.tileA.symbol, highlight = true, alpha = 255)
+                        drawTile(canvas, rectAt(bx, by, traySlotSize * scale), mb.tileB.symbol, highlight = true, alpha = 255)
                     }
-                }
-                else -> {
-                    matchBurst = null
-                    checkWin()
+                    elapsed < PULL_MS + CONVERGE_MS -> {
+                        val t = ((elapsed - PULL_MS).toFloat() / CONVERGE_MS).coerceIn(0f, 1f)
+                        val raw = t * t * t
+                        val scale = lerp(1.12f, 1.5f, raw)
+                        val ax = lerp(mb.windupA.x, impact.x, raw)
+                        val ay = lerp(mb.windupA.y, impact.y, raw)
+                        val bx = lerp(mb.windupB.x, impact.x, raw)
+                        val by = lerp(mb.windupB.y, impact.y, raw)
+                        drawTile(canvas, rectAt(ax, ay, traySlotSize * scale), mb.tileA.symbol, highlight = true, alpha = 255)
+                        drawTile(canvas, rectAt(bx, by, traySlotSize * scale), mb.tileB.symbol, highlight = true, alpha = 255)
+                    }
+                    elapsed < PULL_MS + CONVERGE_MS + POP_MS -> {
+                        val raw = (elapsed - PULL_MS - CONVERGE_MS).toFloat() / POP_MS
+                        val eased = easeOutCubic(raw)
+                        // The impact point can sit close to the top of the view
+                        // (near the tray) - never let the glow/ring reach past
+                        // the view's own top edge or it just gets clipped away.
+                        val headroom = impact.y * 0.95f
+                        val glowRadius = lerp(traySlotSize * 0.3f, traySlotSize * 1.2f, eased).coerceAtMost(headroom)
+                        glowPaint.alpha = ((1f - raw) * 255).toInt()
+                        canvas.drawCircle(impact.x, impact.y, glowRadius, glowPaint)
+
+                        val ringRadius = lerp(traySlotSize * 0.35f, traySlotSize * 1.6f, eased).coerceAtMost(headroom)
+                        ringPaint.strokeWidth = unit * 0.09f * (1f - raw)
+                        ringPaint.alpha = ((1f - raw) * 220).toInt()
+                        canvas.drawCircle(impact.x, impact.y, ringRadius, ringPaint)
+                    }
+                    elapsed < PULL_MS + CONVERGE_MS + POP_MS + BURST_MS -> {
+                        val raw = (elapsed - PULL_MS - CONVERGE_MS - POP_MS).toFloat() / BURST_MS
+                        val alpha = ((1f - raw) * 255).toInt().coerceIn(0, 255)
+                        val baseRect = rectAt(impact.x, impact.y, traySlotSize * 1.5f)
+                        for (s in mb.shards) {
+                            drawShard(canvas, baseRect, s, raw, alpha)
+                        }
+                    }
+                    else -> anyFinished = true
                 }
             }
-            if (matchBurst != null) needsMoreFrames = true
+            if (anyFinished) {
+                matchBursts.removeAll { now - it.startTime >= PULL_MS + CONVERGE_MS + POP_MS + BURST_MS }
+                checkWin()
+            }
+            needsMoreFrames = true
         }
 
         val combo = comboPopup
@@ -1016,6 +1083,30 @@ class MahjongBoardView @JvmOverloads constructor(
             }
         }
 
+        if (confetti.isNotEmpty()) {
+            val elapsedS = (now - confettiStartTime) / 1000f
+            val duration = 2.6f
+            if (elapsedS > duration) {
+                confetti = emptyList()
+            } else {
+                val fadeStart = duration * 0.7f
+                val fadeAlpha = if (elapsedS > fadeStart) 1f - (elapsedS - fadeStart) / (duration - fadeStart) else 1f
+                for (c in confetti) {
+                    val cx = c.x + c.vx * elapsedS
+                    val cy = c.y + c.vy * elapsedS + 0.5f * unit * 1.6f * elapsedS * elapsedS
+                    if (cy > height + unit) continue
+                    val twinkle = 0.5f + 0.5f * sin(now * 0.008f + c.phase)
+                    confettiPaint.color = c.color
+                    confettiPaint.alpha = ((0.5f + twinkle * 0.5f) * 255 * fadeAlpha).toInt().coerceIn(0, 255)
+                    canvas.save()
+                    canvas.translate(cx, cy)
+                    canvas.rotate((now * 0.09f + c.phase * 60f) % 360f)
+                    canvas.drawRect(-unit * 0.07f, -unit * 0.14f, unit * 0.07f, unit * 0.14f, confettiPaint)
+                    canvas.restore()
+                }
+            }
+        }
+
         if (needsMoreFrames) postInvalidateOnAnimation()
     }
 
@@ -1043,13 +1134,13 @@ class MahjongBoardView @JvmOverloads constructor(
             val windupA = if (leftIsA) PointF(midX - windupDist, midY) else PointF(midX + windupDist, midY)
             val windupB = if (leftIsA) PointF(midX + windupDist, midY) else PointF(midX - windupDist, midY)
             val shards = buildShards(symbolColor(fly.tile.symbol), symbolColor(pairTile.symbol))
-            matchBurst = MatchBurst(
+            matchBursts.add(MatchBurst(
                 fly.tile, pairTile, fly.slotIndex, pairIndex, now,
                 fromA = RectF(rectA), fromB = RectF(rectB),
                 windupA = windupA, windupB = windupB,
                 impact = PointF(midX, midY),
                 shards = shards
-            )
+            ))
 
             traySlots[fly.slotIndex] = null
             traySlots[pairIndex] = null
@@ -1060,6 +1151,7 @@ class MahjongBoardView @JvmOverloads constructor(
             lastMatchTime = now
             val text = if (comboCount >= 2) "Combo x$comboCount!" else "Juft!"
             comboPopup = ComboPopup(text, now, midX, trayOffsetY - unit * 0.2f)
+            playMatchSound()
         } else {
             history.addLast(PickRecord(fly.tile, fly.slotIndex, null, -1, moves))
             if (traySlots.all { it != null }) {
@@ -1076,6 +1168,8 @@ class MahjongBoardView @JvmOverloads constructor(
     private fun checkWin() {
         if (!wonFired && tiles.isEmpty() && traySlots.all { it == null }) {
             wonFired = true
+            playWinSound()
+            spawnWinCelebration()
             listener?.onWin(moves)
         }
     }
@@ -1096,9 +1190,8 @@ class MahjongBoardView @JvmOverloads constructor(
             return true
         }
 
-        val mb = matchBurst
         val reserved = flyingTiles.map { it.slotIndex }.toSet() +
-            (if (mb != null) setOf(mb.slotA, mb.slotB) else emptySet())
+            matchBursts.flatMap { listOf(it.slotA, it.slotB) }.toSet()
         val emptyIndex = traySlots.indices.firstOrNull { traySlots[it] == null && it !in reserved } ?: return true
 
         tiles.remove(hit)
