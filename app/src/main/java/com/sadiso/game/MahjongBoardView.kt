@@ -301,6 +301,82 @@ class MahjongBoardView @JvmOverloads constructor(
         }
     }
 
+    // Tile faces/backs are drawn every frame for every visible tile, and
+    // almost all of them share the exact same size - allocating a fresh
+    // LinearGradient/RadialGradient/Path per tile per frame (as this used
+    // to do) creates enough garbage every 16ms to cause GC-pause jank.
+    // These cache the last shader/path built for a given size and only
+    // rebuild when that size actually changes, combined with drawing at a
+    // canvas-translated local origin so the cached shader still lines up.
+    private var faceShaderSize = -1f to -1f
+    private var faceShader: LinearGradient? = null
+    private var glossFaceShaderSize = -1f to -1f
+    private var glossFaceShader: RadialGradient? = null
+    private var backShaderSize = -1f to -1f
+    private var backShader: RadialGradient? = null
+    private var glossBackShaderSize = -1f to -1f
+    private var glossBackShader: RadialGradient? = null
+    private var clipPathKey = Triple(-1f, -1f, -1f)
+    private val cachedClipPath = Path()
+
+    private fun faceShaderFor(w: Float, h: Float): LinearGradient {
+        if (faceShaderSize != (w to h)) {
+            faceShader = LinearGradient(
+                0f, 0f, 0f, h,
+                Color.parseColor("#FFFEF9"), Color.parseColor("#F1E4C4"),
+                Shader.TileMode.CLAMP
+            )
+            faceShaderSize = w to h
+        }
+        return faceShader!!
+    }
+
+    private fun glossFaceShaderFor(w: Float, h: Float): RadialGradient {
+        if (glossFaceShaderSize != (w to h)) {
+            glossFaceShader = RadialGradient(
+                w * 0.32f, h * 0.14f, w * 0.85f,
+                Color.argb(120, 255, 255, 255), Color.argb(0, 255, 255, 255),
+                Shader.TileMode.CLAMP
+            )
+            glossFaceShaderSize = w to h
+        }
+        return glossFaceShader!!
+    }
+
+    private fun backShaderFor(w: Float, h: Float): RadialGradient {
+        if (backShaderSize != (w to h)) {
+            backShader = RadialGradient(
+                w * 0.32f, h * 0.24f, w * 0.95f,
+                Color.parseColor("#FBD26B"), Color.parseColor("#C4860F"),
+                Shader.TileMode.CLAMP
+            )
+            backShaderSize = w to h
+        }
+        return backShader!!
+    }
+
+    private fun glossBackShaderFor(w: Float, h: Float): RadialGradient {
+        if (glossBackShaderSize != (w to h)) {
+            glossBackShader = RadialGradient(
+                w * 0.3f, h * 0.12f, w * 0.7f,
+                Color.argb(110, 255, 255, 255), Color.argb(0, 255, 255, 255),
+                Shader.TileMode.CLAMP
+            )
+            glossBackShaderSize = w to h
+        }
+        return glossBackShader!!
+    }
+
+    private fun clipPathFor(w: Float, h: Float, radius: Float): Path {
+        val key = Triple(w, h, radius)
+        if (clipPathKey != key) {
+            cachedClipPath.rewind()
+            cachedClipPath.addRoundRect(RectF(0f, 0f, w, h), radius, radius, Path.Direction.CW)
+            clipPathKey = key
+        }
+        return cachedClipPath
+    }
+
     private fun isAnimating() =
         flyingTiles.isNotEmpty() || undoFlight != null || shuffleAnims.isNotEmpty()
 
@@ -481,54 +557,53 @@ class MahjongBoardView @JvmOverloads constructor(
 
     private fun drawTile(canvas: Canvas, rect: RectF, symbol: String, highlight: Boolean, alpha: Int) {
         val radius = minOf(unitX, unit) * 0.28f
+        val w = rect.width()
+        val h = rect.height()
 
-        val sideRect = RectF(rect.left, rect.top + unit * 0.13f, rect.right, rect.bottom + unit * 0.13f)
+        canvas.save()
+        canvas.translate(rect.left, rect.top)
+        val localRect = RectF(0f, 0f, w, h)
+
+        val sideRect = RectF(0f, unit * 0.13f, w, h + unit * 0.13f)
         sidePaint.color = Color.argb(alpha, 0xC4, 0xAE, 0x7C)
         canvas.drawRoundRect(sideRect, radius, radius, sidePaint)
 
         for (i in 2 downTo 0) {
             val off = unit * (0.05f + i * 0.045f)
-            val shadowRect = RectF(rect)
-            shadowRect.offset(off, off * 1.15f)
+            val shadowRect = RectF(off, off * 1.15f, w + off, h + off * 1.15f)
             shadowPaint.color = Color.argb((26 - i * 6) * alpha / 255, 0, 0, 0)
             canvas.drawRoundRect(shadowRect, radius, radius, shadowPaint)
         }
 
-        facePaint.shader = LinearGradient(
-            rect.left, rect.top, rect.left, rect.bottom,
-            Color.parseColor("#FFFEF9"), Color.parseColor("#F1E4C4"),
-            Shader.TileMode.CLAMP
-        )
+        facePaint.shader = faceShaderFor(w, h)
         facePaint.alpha = alpha
-        canvas.drawRoundRect(rect, radius, radius, facePaint)
+        canvas.drawRoundRect(localRect, radius, radius, facePaint)
 
         canvas.save()
-        canvas.clipPath(Path().apply { addRoundRect(rect, radius, radius, Path.Direction.CW) })
-        glossPaint.shader = RadialGradient(
-            rect.left + rect.width() * 0.32f, rect.top + rect.height() * 0.14f, rect.width() * 0.85f,
-            Color.argb(120 * alpha / 255, 255, 255, 255), Color.argb(0, 255, 255, 255),
-            Shader.TileMode.CLAMP
-        )
-        canvas.drawRect(rect, glossPaint)
+        canvas.clipPath(clipPathFor(w, h, radius))
+        glossPaint.shader = glossFaceShaderFor(w, h)
+        glossPaint.alpha = alpha
+        canvas.drawRect(localRect, glossPaint)
         canvas.restore()
 
         borderPaint.strokeWidth = unit * 0.055f
         borderPaint.alpha = alpha
-        canvas.drawRoundRect(rect, radius, radius, borderPaint)
+        canvas.drawRoundRect(localRect, radius, radius, borderPaint)
 
-        val innerRect = RectF(rect)
+        val innerRect = RectF(localRect)
         innerRect.inset(unit * 0.07f, unit * 0.07f)
         bevelPaint.strokeWidth = unit * 0.03f
         bevelPaint.alpha = 90 * alpha / 255
         canvas.drawRoundRect(innerRect, radius * 0.8f, radius * 0.8f, bevelPaint)
 
-        drawSymbolIcon(canvas, rect, symbol, alpha)
+        drawSymbolIcon(canvas, localRect, symbol, alpha)
 
         if (highlight) {
             selectedBorderPaint.strokeWidth = unit * 0.16f
             selectedBorderPaint.alpha = alpha
-            canvas.drawRoundRect(rect, radius, radius, selectedBorderPaint)
+            canvas.drawRoundRect(localRect, radius, radius, selectedBorderPaint)
         }
+        canvas.restore()
     }
 
     private fun suitAndNumber(symbol: String): Pair<Int, Int> {
@@ -665,48 +740,46 @@ class MahjongBoardView @JvmOverloads constructor(
 
     private fun drawTileBack(canvas: Canvas, rect: RectF) {
         val radius = minOf(unitX, unit) * 0.28f
+        val w = rect.width()
+        val h = rect.height()
 
-        val sideRect = RectF(rect.left, rect.top + unit * 0.13f, rect.right, rect.bottom + unit * 0.13f)
+        canvas.save()
+        canvas.translate(rect.left, rect.top)
+        val localRect = RectF(0f, 0f, w, h)
+
+        val sideRect = RectF(0f, unit * 0.13f, w, h + unit * 0.13f)
         sidePaint.color = Color.parseColor("#A9740F")
         canvas.drawRoundRect(sideRect, radius, radius, sidePaint)
 
         for (i in 2 downTo 0) {
             val off = unit * (0.05f + i * 0.045f)
-            val shadowRect = RectF(rect)
-            shadowRect.offset(off, off * 1.15f)
+            val shadowRect = RectF(off, off * 1.15f, w + off, h + off * 1.15f)
             shadowPaint.color = Color.argb(26 - i * 6, 0, 0, 0)
             canvas.drawRoundRect(shadowRect, radius, radius, shadowPaint)
         }
 
-        backPaint.shader = RadialGradient(
-            rect.left + rect.width() * 0.32f, rect.top + rect.height() * 0.24f, rect.width() * 0.95f,
-            Color.parseColor("#FBD26B"), Color.parseColor("#C4860F"),
-            Shader.TileMode.CLAMP
-        )
-        canvas.drawRoundRect(rect, radius, radius, backPaint)
+        backPaint.shader = backShaderFor(w, h)
+        canvas.drawRoundRect(localRect, radius, radius, backPaint)
 
         canvas.save()
-        canvas.clipPath(Path().apply { addRoundRect(rect, radius, radius, Path.Direction.CW) })
-        glossPaint.shader = RadialGradient(
-            rect.left + rect.width() * 0.3f, rect.top + rect.height() * 0.12f, rect.width() * 0.7f,
-            Color.argb(110, 255, 255, 255), Color.argb(0, 255, 255, 255),
-            Shader.TileMode.CLAMP
-        )
-        canvas.drawRect(rect, glossPaint)
+        canvas.clipPath(clipPathFor(w, h, radius))
+        glossPaint.shader = glossBackShaderFor(w, h)
+        canvas.drawRect(localRect, glossPaint)
         canvas.restore()
 
         backBorderPaint.strokeWidth = unit * 0.06f
-        canvas.drawRoundRect(rect, radius, radius, backBorderPaint)
+        canvas.drawRoundRect(localRect, radius, radius, backBorderPaint)
 
         medallionPaint.strokeWidth = unit * 0.045f
-        val cx = rect.centerX()
-        val cy = rect.centerY()
-        canvas.drawCircle(cx, cy, rect.width() * 0.3f, medallionPaint)
-        canvas.drawCircle(cx, cy, rect.width() * 0.17f, medallionPaint)
+        val cx = localRect.centerX()
+        val cy = localRect.centerY()
+        canvas.drawCircle(cx, cy, w * 0.3f, medallionPaint)
+        canvas.drawCircle(cx, cy, w * 0.17f, medallionPaint)
         accentPaint.shader = null
         accentPaint.color = Color.parseColor("#7A4A1E")
         accentPaint.alpha = 255
-        canvas.drawCircle(cx, cy, rect.width() * 0.05f, accentPaint)
+        canvas.drawCircle(cx, cy, w * 0.05f, accentPaint)
+        canvas.restore()
     }
 
     private fun ensureAmbientParticles() {
