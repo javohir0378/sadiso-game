@@ -33,23 +33,38 @@ class MahjongFragment : BaseFragment(), MahjongBoardView.Listener {
         }
         root.addView(contentRoot, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
 
-        // Telegram-style toolbar: back button, avatar + name, settings icon.
+        // Telegram-style toolbar, but every piece is its own separated
+        // rounded shape (like the referenced screenshot) instead of one
+        // continuous bar, restyled with the game's gold/dark card look.
         val topBar = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setBackgroundColor(ContextCompat.getColor(context, R.color.toolbar_bg))
-            setPadding(ctx.dp(4), ctx.dp(16), ctx.dp(14), ctx.dp(10))
+            setPadding(ctx.dp(14), ctx.dp(16), ctx.dp(14), ctx.dp(6))
         }
         contentRoot.addView(topBar, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
 
         val backBtn = ImageButton(ctx).apply {
-            setBackgroundResource(R.drawable.borderless_icon_bg)
+            setBackgroundResource(R.drawable.circle_button_bg)
             setImageResource(R.drawable.ic_back)
             contentDescription = ctx.getString(R.string.main_menu)
             scaleType = ImageView.ScaleType.CENTER_INSIDE
-            setPadding(ctx.dp(10), ctx.dp(10), ctx.dp(10), ctx.dp(10))
+            setPadding(ctx.dp(11), ctx.dp(11), ctx.dp(11), ctx.dp(11))
         }
-        topBar.addView(backBtn, LinearLayout.LayoutParams(ctx.dp(44), ctx.dp(44)))
+        topBar.addView(backBtn, LinearLayout.LayoutParams(ctx.dp(46), ctx.dp(46)))
+
+        val namePill = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setBackgroundResource(R.drawable.name_pill_bg)
+            setPadding(ctx.dp(6), ctx.dp(6), ctx.dp(18), ctx.dp(6))
+        }
+        topBar.addView(
+            namePill,
+            LinearLayout.LayoutParams(0, ctx.dp(56), 1f).apply {
+                marginStart = ctx.dp(10)
+                marginEnd = ctx.dp(10)
+            }
+        )
 
         val avatarFrame = FrameLayout(ctx)
         avatarView = ImageView(ctx).apply {
@@ -63,11 +78,8 @@ class MahjongFragment : BaseFragment(), MahjongBoardView.Listener {
                 }
             }
         }
-        avatarFrame.addView(avatarView, FrameLayout.LayoutParams(ctx.dp(40), ctx.dp(40)))
-        topBar.addView(
-            avatarFrame,
-            LinearLayout.LayoutParams(ctx.dp(40), ctx.dp(40)).apply { marginStart = ctx.dp(4) }
-        )
+        avatarFrame.addView(avatarView, FrameLayout.LayoutParams(ctx.dp(42), ctx.dp(42)))
+        namePill.addView(avatarFrame, LinearLayout.LayoutParams(ctx.dp(42), ctx.dp(42)))
 
         val nameColumn = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
@@ -85,21 +97,21 @@ class MahjongFragment : BaseFragment(), MahjongBoardView.Listener {
             setTextColor(ContextCompat.getColor(context, R.color.label_muted))
             textSize = 12f
         })
-        topBar.addView(
+        namePill.addView(
             nameColumn,
-            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                marginStart = ctx.dp(12)
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                marginStart = ctx.dp(10)
             }
         )
 
         val settingsBtn = ImageButton(ctx).apply {
-            setBackgroundResource(R.drawable.borderless_icon_bg)
+            setBackgroundResource(R.drawable.circle_button_bg)
             setImageResource(R.drawable.ic_settings)
             contentDescription = ctx.getString(R.string.action_settings)
             scaleType = ImageView.ScaleType.CENTER_INSIDE
-            setPadding(ctx.dp(10), ctx.dp(10), ctx.dp(10), ctx.dp(10))
+            setPadding(ctx.dp(11), ctx.dp(11), ctx.dp(11), ctx.dp(11))
         }
-        topBar.addView(settingsBtn, LinearLayout.LayoutParams(ctx.dp(44), ctx.dp(44)))
+        topBar.addView(settingsBtn, LinearLayout.LayoutParams(ctx.dp(46), ctx.dp(46)))
 
         board = MahjongBoardView(ctx)
         contentRoot.addView(board, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
