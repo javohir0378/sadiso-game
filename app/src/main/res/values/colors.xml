@@ -20,4 +20,13 @@
     <color name="tray_wood_border">#C99A54</color>
     <color name="error_red">#FF6B6B</color>
     <color name="text_title">#F5EAD3</color>
+
+    <color name="button_purple_light">#8A5FC9</color>
+    <color name="button_purple_dark">#4A2B7A</color>
+    <color name="button_gold_light">#FFD873</color>
+    <color name="button_gold_dark">#B87A12</color>
+    <color name="button_blue_light">#5FA8E0</color>
+    <color name="button_blue_dark">#1E5A94</color>
+    <color name="plaque_bg">#1A2E1E</color>
+    <color name="hint_glow">#FFF176</color>
 </resources>

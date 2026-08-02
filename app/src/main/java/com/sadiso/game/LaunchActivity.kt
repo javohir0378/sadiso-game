@@ -35,6 +35,7 @@ class LaunchActivity : AppCompatActivity(), FragmentHost {
             v.setPadding(bars.left, bars.top, bars.right, bars.bottom)
             insets
         }
+        ViewCompat.requestApplyInsets(container)
 
         tdlib = TdlibController(applicationContext)
 

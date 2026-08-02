@@ -2,24 +2,21 @@ package com.sadiso.game
 
 import android.app.AlertDialog
 import android.content.Context
-import android.graphics.Color
 import android.graphics.Typeface
-import android.text.SpannableString
-import android.text.style.ForegroundColorSpan
 import android.view.Gravity
 import android.view.View
 import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.LinearLayout
-import android.widget.RelativeLayout
 import android.widget.TextView
+import androidx.core.content.ContextCompat
 
 class MahjongFragment : BaseFragment(), MahjongBoardView.Listener {
 
     private lateinit var ctx: Context
     private lateinit var board: MahjongBoardView
-    private lateinit var statusText: TextView
+    private lateinit var statusNumberText: TextView
 
     override fun createView(context: Context): View {
         ctx = context
@@ -31,52 +28,36 @@ class MahjongFragment : BaseFragment(), MahjongBoardView.Listener {
         }
         root.addView(contentRoot, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
 
-        val topBar = RelativeLayout(ctx).apply {
-            setPadding(ctx.dp(18), ctx.dp(14), ctx.dp(18), ctx.dp(6))
+        val topBar = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(ctx.dp(12), ctx.dp(18), ctx.dp(12), ctx.dp(8))
         }
         contentRoot.addView(topBar, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
 
-        val newGameButton = ImageButton(ctx).apply {
-            setBackgroundResource(R.drawable.circle_button_bg)
-            setImageResource(R.drawable.ic_new_game)
-            contentDescription = ctx.getString(R.string.new_game)
-            scaleType = ImageView.ScaleType.CENTER_INSIDE
-            setPadding(ctx.dp(13), ctx.dp(13), ctx.dp(13), ctx.dp(13))
-        }
-        topBar.addView(
-            newGameButton,
-            RelativeLayout.LayoutParams(ctx.dp(52), ctx.dp(52)).apply {
-                addRule(RelativeLayout.ALIGN_PARENT_START)
-                addRule(RelativeLayout.CENTER_VERTICAL)
-            }
-        )
+        // left: refresh
+        val leftGroup = FrameLayout(ctx)
+        topBar.addView(leftGroup, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        val (refreshCol, refreshBtn) = iconColumn(R.drawable.ic_new_game, ctx.getString(R.string.action_refresh), R.drawable.circle_button_bg, 46)
+        leftGroup.addView(refreshCol, FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.START or Gravity.CENTER_VERTICAL))
 
-        statusText = TextView(ctx).apply {
-            text = "0"
-            textSize = 16f
-            setTypeface(typeface, Typeface.BOLD)
-        }
-        topBar.addView(
-            statusText,
-            RelativeLayout.LayoutParams(RelativeLayout.LayoutParams.WRAP_CONTENT, RelativeLayout.LayoutParams.WRAP_CONTENT).apply {
-                addRule(RelativeLayout.CENTER_IN_PARENT)
-            }
-        )
+        // center: moves plaque
+        val plaque = buildPlaque()
+        topBar.addView(plaque, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT))
 
-        val menuButton = ImageButton(ctx).apply {
-            setBackgroundResource(R.drawable.circle_button_bg)
-            setImageResource(R.drawable.ic_home)
-            contentDescription = ctx.getString(R.string.main_menu)
-            scaleType = ImageView.ScaleType.CENTER_INSIDE
-            setPadding(ctx.dp(13), ctx.dp(13), ctx.dp(13), ctx.dp(13))
+        // right: home + settings
+        val rightGroup = FrameLayout(ctx)
+        topBar.addView(rightGroup, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        val rightRow = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
         }
-        topBar.addView(
-            menuButton,
-            RelativeLayout.LayoutParams(ctx.dp(52), ctx.dp(52)).apply {
-                addRule(RelativeLayout.ALIGN_PARENT_END)
-                addRule(RelativeLayout.CENTER_VERTICAL)
-            }
-        )
+        val (homeCol, homeBtn) = iconColumn(R.drawable.ic_home, ctx.getString(R.string.action_home), R.drawable.circle_button_bg, 46)
+        val (settingsCol, settingsBtn) = iconColumn(R.drawable.ic_settings, ctx.getString(R.string.action_settings), R.drawable.circle_button_bg, 46)
+        rightRow.addView(homeCol)
+        rightRow.addView(View(ctx), LinearLayout.LayoutParams(ctx.dp(10), 1))
+        rightRow.addView(settingsCol)
+        rightGroup.addView(rightRow, FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.END or Gravity.CENTER_VERTICAL))
 
         board = MahjongBoardView(ctx)
         contentRoot.addView(board, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
@@ -84,55 +65,113 @@ class MahjongFragment : BaseFragment(), MahjongBoardView.Listener {
         val bottomBar = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
-            setPadding(0, ctx.dp(10), 0, ctx.dp(22))
+            setPadding(0, ctx.dp(12), 0, ctx.dp(24))
         }
         contentRoot.addView(bottomBar, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
 
-        val shuffleButton = ImageButton(ctx).apply {
-            setBackgroundResource(R.drawable.circle_button_bg)
-            setImageResource(R.drawable.ic_shuffle)
-            contentDescription = ctx.getString(R.string.shuffle)
-            scaleType = ImageView.ScaleType.CENTER_INSIDE
-            setPadding(ctx.dp(15), ctx.dp(15), ctx.dp(15), ctx.dp(15))
-        }
-        bottomBar.addView(shuffleButton, LinearLayout.LayoutParams(ctx.dp(56), ctx.dp(56)))
-
-        bottomBar.addView(View(ctx), LinearLayout.LayoutParams(ctx.dp(44), ctx.dp(1)))
-
-        val undoButton = ImageButton(ctx).apply {
-            setBackgroundResource(R.drawable.circle_button_bg)
-            setImageResource(R.drawable.ic_undo)
-            contentDescription = ctx.getString(R.string.undo)
-            scaleType = ImageView.ScaleType.CENTER_INSIDE
-            setPadding(ctx.dp(15), ctx.dp(15), ctx.dp(15), ctx.dp(15))
-        }
-        bottomBar.addView(undoButton, LinearLayout.LayoutParams(ctx.dp(56), ctx.dp(56)))
+        val (shuffleCol, shuffleBtn) = iconColumn(R.drawable.ic_shuffle, ctx.getString(R.string.shuffle), R.drawable.circle_button_purple, 58)
+        val (hintCol, hintBtn) = iconColumn(R.drawable.ic_hint, ctx.getString(R.string.action_hint), R.drawable.circle_button_gold, 58)
+        val (undoCol, undoBtn) = iconColumn(R.drawable.ic_undo, ctx.getString(R.string.undo), R.drawable.circle_button_blue, 58)
+        bottomBar.addView(shuffleCol)
+        bottomBar.addView(View(ctx), LinearLayout.LayoutParams(ctx.dp(28), 1))
+        bottomBar.addView(hintCol)
+        bottomBar.addView(View(ctx), LinearLayout.LayoutParams(ctx.dp(28), 1))
+        bottomBar.addView(undoCol)
 
         board.listener = this
-        newGameButton.setOnClickListener { board.newGame() }
-        shuffleButton.setOnClickListener { board.shuffleRemaining() }
-        undoButton.setOnClickListener { board.undo() }
-        menuButton.setOnClickListener { finishFragment() }
+        refreshBtn.setOnClickListener { board.newGame() }
+        shuffleBtn.setOnClickListener { board.shuffleRemaining() }
+        hintBtn.setOnClickListener {
+            if (!board.hint()) {
+                android.widget.Toast.makeText(ctx, ctx.getString(R.string.hint_none), android.widget.Toast.LENGTH_SHORT).show()
+            }
+        }
+        undoBtn.setOnClickListener { board.undo() }
+        homeBtn.setOnClickListener { finishFragment() }
+        settingsBtn.setOnClickListener {
+            AlertDialog.Builder(ctx)
+                .setTitle(ctx.getString(R.string.settings_soon_title))
+                .setMessage(ctx.getString(R.string.settings_soon_message))
+                .setPositiveButton("OK", null)
+                .show()
+        }
 
         onMovesChanged(0)
         return root
     }
 
+    private fun iconColumn(iconRes: Int, label: String, bgRes: Int, sizeDp: Int): Pair<LinearLayout, ImageButton> {
+        val col = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+        }
+        val btn = ImageButton(ctx).apply {
+            setBackgroundResource(bgRes)
+            setImageResource(iconRes)
+            contentDescription = label
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            val pad = ctx.dp((sizeDp * 0.28f).toInt())
+            setPadding(pad, pad, pad, pad)
+        }
+        col.addView(btn, LinearLayout.LayoutParams(ctx.dp(sizeDp), ctx.dp(sizeDp)))
+        col.addView(
+            TextView(ctx).apply {
+                text = label
+                setTextColor(ContextCompat.getColor(context, R.color.label_muted))
+                textSize = 10f
+                gravity = Gravity.CENTER
+            },
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = ctx.dp(4)
+            }
+        )
+        return col to btn
+    }
+
+    private fun buildPlaque(): LinearLayout {
+        val plaque = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            setBackgroundResource(R.drawable.plaque_bg)
+            setPadding(ctx.dp(22), ctx.dp(8), ctx.dp(22), ctx.dp(8))
+        }
+        plaque.addView(TextView(ctx).apply {
+            text = ctx.getString(R.string.moves_label)
+            setTextColor(ContextCompat.getColor(context, R.color.label_muted))
+            textSize = 10f
+            letterSpacing = 0.15f
+            gravity = Gravity.CENTER
+        })
+        statusNumberText = TextView(ctx).apply {
+            text = "0"
+            setTextColor(ContextCompat.getColor(context, R.color.text_title))
+            textSize = 22f
+            setTypeface(typeface, Typeface.BOLD)
+            gravity = Gravity.CENTER
+        }
+        plaque.addView(
+            statusNumberText,
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = ctx.dp(2)
+            }
+        )
+        plaque.addView(
+            TextView(ctx).apply {
+                text = "☆ ☆ ☆"
+                setTextColor(ContextCompat.getColor(context, R.color.accent_gold))
+                textSize = 12f
+                gravity = Gravity.CENTER
+                alpha = 0.6f
+            },
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = ctx.dp(4)
+            }
+        )
+        return plaque
+    }
+
     override fun onMovesChanged(moves: Int) {
-        val label = "Urinish: "
-        val text = "$label$moves"
-        val spannable = SpannableString(text)
-        spannable.setSpan(
-            ForegroundColorSpan(Color.parseColor("#FFC107")),
-            0, label.length,
-            SpannableString.SPAN_EXCLUSIVE_EXCLUSIVE
-        )
-        spannable.setSpan(
-            ForegroundColorSpan(Color.parseColor("#F5EAD3")),
-            label.length, text.length,
-            SpannableString.SPAN_EXCLUSIVE_EXCLUSIVE
-        )
-        statusText.text = spannable
+        statusNumberText.text = moves.toString()
     }
 
     override fun onWin(moves: Int) {

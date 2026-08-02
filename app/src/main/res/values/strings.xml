@@ -1,10 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Sadiso Game</string>
-    <string name="new_game">Yangi o\'yin</string>
     <string name="shuffle">Aralashtirish</string>
     <string name="undo">Orqaga</string>
     <string name="main_menu">Bosh menyu</string>
+    <string name="action_refresh">Yangilash</string>
+    <string name="action_home">Bosh sahifa</string>
+    <string name="action_settings">Sozlamalar</string>
+    <string name="action_hint">Maslahat</string>
+    <string name="moves_label">URINISH</string>
+    <string name="settings_soon_title">Sozlamalar</string>
+    <string name="settings_soon_message">Bu bo\'lim tez orada qo\'shiladi.</string>
+    <string name="hint_none">Hozircha yordam beradigan juftlik yo\'q</string>
 
     <string name="login_loading">Yuklanmoqda…</string>
 

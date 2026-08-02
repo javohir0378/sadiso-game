@@ -37,6 +37,7 @@ class MahjongBoardView @JvmOverloads constructor(
         private const val COMBO_POPUP_MS = 1150L
         private const val SHARD_GRID = 3
         private const val HISTORY_LIMIT = 20
+        private const val HINT_DURATION_MS = 1400L
         // Real mahjong tiles are noticeably taller than wide, like a brick -
         // not the near-square footprint the fine-grid math would give by
         // default. This only scales rendering; the underlying fine-grid
@@ -72,6 +73,8 @@ class MahjongBoardView @JvmOverloads constructor(
     )
 
     private data class RejectShake(val tile: Tile, val startTime: Long)
+
+    private data class HintFlash(val tileA: Tile, val tileB: Tile, val startTime: Long)
 
     private data class ShuffleAnim(val tile: Tile, val offset: PointF, val startTime: Long)
 
@@ -130,6 +133,7 @@ class MahjongBoardView @JvmOverloads constructor(
     private var comboCount = 0
     private var lastMatchTime = 0L
     private var rejectShake: RejectShake? = null
+    private var hintFlash: HintFlash? = null
     private var shuffleAnims: List<ShuffleAnim> = emptyList()
     private var ambientParticles: List<AmbientParticle> = emptyList()
     private val history = ArrayDeque<PickRecord>()
@@ -189,6 +193,13 @@ class MahjongBoardView @JvmOverloads constructor(
     private val selectPulsePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         color = Color.parseColor("#FFD54F")
+    }
+    private val hintRingPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        color = Color.parseColor("#FFF176")
+    }
+    private val hintGlowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.parseColor("#FFF176")
     }
     private val ambientParticlePaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val traySlotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -268,6 +279,15 @@ class MahjongBoardView @JvmOverloads constructor(
             )
         }
         invalidate()
+    }
+
+    fun hint(): Boolean {
+        if (isAnimating() || matchBurst != null) return true
+        val selectable = tiles.filter { isSelectable(it, tiles) }
+        val pair = selectable.groupBy { it.symbol }.values.firstOrNull { it.size >= 2 } ?: return false
+        hintFlash = HintFlash(pair[0], pair[1], System.currentTimeMillis())
+        invalidate()
+        return true
     }
 
     fun undo() {
@@ -767,6 +787,10 @@ class MahjongBoardView @JvmOverloads constructor(
         val sorted = tiles.sortedBy { it.z }
         val shake = rejectShake
         val activeShuffle = shuffleAnims
+        val hf = hintFlash
+        if (hf != null && now - hf.startTime >= HINT_DURATION_MS) {
+            hintFlash = null
+        }
 
         for (t in sorted) {
             var rect = rectFor(t)
@@ -815,6 +839,31 @@ class MahjongBoardView @JvmOverloads constructor(
                     )
                 }
                 drawTile(canvas, rect, t.symbol, highlight = false, alpha = 255)
+
+                if (hf != null && (t == hf.tileA || t == hf.tileB) && now - hf.startTime < HINT_DURATION_MS) {
+                    val raw = ((now - hf.startTime).toFloat() / HINT_DURATION_MS).coerceIn(0f, 1f)
+                    val pulse = 0.5f + 0.5f * sin(raw * Math.PI.toFloat() * 5f)
+                    val fade = 1f - easeOutCubic(raw).let { if (raw > 0.7f) (raw - 0.7f) / 0.3f else 0f }
+                    val ringHalfW = rect.width() / 2f * (1.1f + pulse * 0.12f)
+                    val ringHalfH = rect.height() / 2f * (1.1f + pulse * 0.12f)
+                    hintGlowPaint.alpha = ((60 + pulse * 60) * fade).toInt().coerceIn(0, 180)
+                    canvas.drawRoundRect(
+                        RectF(
+                            rect.centerX() - ringHalfW * 1.3f, rect.centerY() - ringHalfH * 1.3f,
+                            rect.centerX() + ringHalfW * 1.3f, rect.centerY() + ringHalfH * 1.3f
+                        ),
+                        unit * 0.4f, unit * 0.4f, hintGlowPaint
+                    )
+                    hintRingPaint.strokeWidth = unit * (0.09f + pulse * 0.04f)
+                    hintRingPaint.alpha = (255 * fade).toInt().coerceIn(0, 255)
+                    canvas.drawRoundRect(
+                        RectF(
+                            rect.centerX() - ringHalfW, rect.centerY() - ringHalfH,
+                            rect.centerX() + ringHalfW, rect.centerY() + ringHalfH
+                        ),
+                        unit * 0.32f, unit * 0.32f, hintRingPaint
+                    )
+                }
             }
         }
 

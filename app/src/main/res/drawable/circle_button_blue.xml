@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ripple xmlns:android="http://schemas.android.com/apk/res/android"
+    android:color="#40FFFFFF">
+    <item>
+        <shape android:shape="oval">
+            <gradient
+                android:type="radial"
+                android:gradientRadius="60dp"
+                android:centerX="0.35"
+                android:centerY="0.3"
+                android:startColor="@color/button_blue_light"
+                android:endColor="@color/button_blue_dark" />
+            <stroke
+                android:width="2dp"
+                android:color="@color/circle_button_border" />
+        </shape>
+    </item>
+</ripple>
